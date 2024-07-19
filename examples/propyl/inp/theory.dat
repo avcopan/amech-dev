@@ -1,9 +1,18 @@
-level dft
+level dft1
     method = bp86
     basis = def2-sv(p)
     orb_res = RU
     program = gaussian16
-    mem = 16.0
+    mem = 20.0
+    nprocs = 9
+end level
+
+level dft2
+    method = bp86
+    basis = def2-svp
+    orb_res = RU
+    program = gaussian16
+    mem = 20.0
     nprocs = 9
 end level
 
@@ -12,7 +21,7 @@ level mp2
     basis = cc-pvdz
     orb_res = RR
     program = gaussian16
-    mem = 16.0
+    mem = 20.0
     nprocs = 9
 end level
 
@@ -21,6 +30,6 @@ level f12
     basis = cc-pvdz-f12
     orb_res = RU
     program = orca4
-    mem = 16.0
+    mem = 20.0
     nprocs = 1
 end level
