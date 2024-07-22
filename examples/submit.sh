@@ -4,6 +4,9 @@ WORK_DIR=${1}
 HOST=${2}
 NUM_PARALLEL=${3:-1}
 
+MANIFEST_FILE=$(pixi info | awk -F":" '$1~/Manifest file/{gsub(/ /, "", $2); print $2;}')
+echo ${MANIFEST_FILE}
+
 WORK_DIR="$(cd "$(dirname ${WORK_DIR})"; pwd)/$(basename "${WORK_DIR}")"
 
 function run_job() {
@@ -12,9 +15,9 @@ function run_job() {
     cd ${work_dir}
     echo "Running ${num_parallel} instances on $(hostname) at ${PWD}"
     source ~/.bash_profile
-    for i in $(seq ${num_parallel}); do
-        pixi run automech run &> "out${i}.log" &
-    done
+    # for i in $(seq ${num_parallel}); do
+    #     pixi run automech run &> "out${i}.log" &
+    # done
 }
 
 # ssh ${HOST}  'bash -s' < ${SCRIPT} ${WORK_DIR}
