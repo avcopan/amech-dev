@@ -18,11 +18,11 @@ function run_job() {
     echo "Running ${num_parallel} instances on $(hostname) at ${PWD}"
     which pixi
     eval "$(pixi shell-hook --manifest-path=${manifest_file})"
-    which python
-    which automech
+    automech run &> out.log &
     # for i in $(seq ${num_parallel}); do
     #     pixi run automech run &> "out${i}.log" &
     # done
+    # wait
 }
 
 # ssh ${HOST}  'bash -s' < ${SCRIPT} ${WORK_DIR}
