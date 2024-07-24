@@ -5,14 +5,11 @@ JOB_NPROCS=${2}     # number of cores required per job
 IFS="," read -ra DIRS <<< "${3}"    # list of run directories
 IFS="," read -ra NODES <<< "${4}"   # list of nodes for running
 
-echo "JOB_MEM = ${JOB_MEM}"
-echo "JOB_NPROCS = ${JOB_NPROCS}"
-
 echo "DIRS:"
 echo ${DIRS[*]}
 
 # Determine how many workers to put on each node, based on job memory and nprocs
-echo "Determining node capacities:"
+echo "Determining node capacities based on job memory ${JOB_MEM} and nprocs ${JOB_NPROCS}..."
 SSHLOGINS=()
 SSHLOGIN=""
 for node in "${NODES[@]}"; do
@@ -35,10 +32,12 @@ run() {
 }
 export -f run
 
+echo "Manifest: ${PIXI_PROJECT_MANIFEST}"
+
 # parallel --sshlogin $SSHLOGIN "$(declare -f run); run {}" ::: ${DIRS[*]}
 # parallel --sshlogin $SSHLOGIN "cd {} && echo "Hello from ${PWD} on $(hostname)"" ::: ${DIRS[*]}
 # parallel --sshlogin $SSHLOGIN "cd ${PWD} && ./scripts/_run.sh" ::: ${DIRS[*]}
-parallel --sshlogin ${SSHLOGIN} "cd ${PWD} && ./scripts/_run.sh" ::: ${DIRS[*]}
+parallel --sshlogin ${SSHLOGIN} "cd ${PWD} && ./scripts/_run.sh" ::: ${DIRS[*]} ::: ${PIXI_PROJECT_MANIFEST}
 # parallel --eta --sshlogin 4/csed-0009,3/csed-0010 "cd ${PWD} && ./scripts/_run.sh" ::: ${DIRS[*]}
 
 # parallel --sshlogin csed-0009,csed-0010 "cd ${PWD} && ./task.sh" ::: 1 2 3 4 5

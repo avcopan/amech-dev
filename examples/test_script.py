@@ -28,13 +28,16 @@ def run_test(source_dir, nodes):
     for num, task in enumerate(spc_tasks[:1]):
         task_run_dct = run_dct.copy()
         task_run_dct["els"] = task
+        task_run_dct["thermo"] = ""
+        task_run_dct["kin"] = ""
         #   b. Inner loop: Run species in parallel
         task_name = task.split()[1]
         spc_run_dirs = []
-        for spc_idx in spc_idxs:
+        for spc_idx in spc_idxs[:2]:
+        # for spc_idx in spc_idxs:
             spc_run_dct = {**task_run_dct, "spc": f"{spc_idx}"}
             spc_file_dct = {**file_dct, "run.dat": form_run_dat(spc_run_dct)}
-            spc_run_dir = Path(test_dir) / f"{num}_spc_{task_name}" / f"{spc_idx:02d}"
+            spc_run_dir = Path(test_dir) / f"{num:02d}_spc_{task_name}" / f"{spc_idx:02d}"
             spc_run_dir.mkdir(parents=True, exist_ok=True)
             write_input_files(spc_run_dir, spc_file_dct)
             spc_run_dirs.append(str(spc_run_dir))
@@ -71,7 +74,8 @@ def form_run_dat(run_dct: dict[str, str]) -> str:
     keys = ["input", "spc", "pes", "els", "thermo", "kin"]
     run_dat = ""
     for key in keys:
-        run_dat += f"{key}\n{format_block(run_dct.get(key))}\nend {key}\n\n"
+        if key in run_dct:
+            run_dat += f"{key}\n{format_block(run_dct.get(key))}\nend {key}\n\n"
     return run_dat
 
 
