@@ -11,9 +11,22 @@ echo "JOB_NPROCS = ${JOB_NPROCS}"
 echo "DIRS:"
 echo ${DIRS[*]}
 
-echo "NODES:"
-SSHLOGIN=$(IFS=,; echo "${NODES[*]}")
-echo $SSHLOGIN
+# Determine how many workers to put on each node, based on job memory and nprocs
+echo "Determining node capacities:"
+SSHLOGINS=()
+SSHLOGIN=""
+for node in "${NODES[@]}"; do
+    node_mem_kb=$(ssh ${node} "grep MemTotal /proc/meminfo" | awk '{print $2}')
+    node_mem=$((node_mem_kb / 1000000))
+    node_nprocs=$(ssh ${node} "nproc --all")
+    node_cap1=$((node_mem / JOB_MEM))
+    node_cap2=$((node_nprocs / JOB_NPROCS))
+    node_nwork=$((node_cap1 < node_cap2 ? node_cap1 : node_cap2))
+    echo "Node ${node}: Memory=${node_mem} | Nprocs=${node_nprocs} | NWorkers=${node_nwork}"
+    SSHLOGINS+=("${node_nwork}/${node}")
+done
+SSHLOGIN=$(IFS=,; echo "${SSHLOGINS[*]}")
+echo "Running with --sshlogin ${SSHLOGIN}"
 
 run() {
     local run_dir=${1}
@@ -24,6 +37,8 @@ export -f run
 
 # parallel --sshlogin $SSHLOGIN "$(declare -f run); run {}" ::: ${DIRS[*]}
 # parallel --sshlogin $SSHLOGIN "cd {} && echo "Hello from ${PWD} on $(hostname)"" ::: ${DIRS[*]}
-parallel --env run --sshlogin $SSHLOGIN "run" ::: ${DIRS[*]}
+# parallel --sshlogin $SSHLOGIN "cd ${PWD} && ./scripts/_run.sh" ::: ${DIRS[*]}
+parallel --sshlogin ${SSHLOGIN} "cd ${PWD} && ./scripts/_run.sh" ::: ${DIRS[*]}
+# parallel --eta --sshlogin 4/csed-0009,3/csed-0010 "cd ${PWD} && ./scripts/_run.sh" ::: ${DIRS[*]}
 
 # parallel --sshlogin csed-0009,csed-0010 "cd ${PWD} && ./task.sh" ::: 1 2 3 4 5
