@@ -5,3 +5,4 @@
 # rattler-build output
 output/
 build/
+.test/
