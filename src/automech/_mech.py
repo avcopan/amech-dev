@@ -1320,11 +1320,12 @@ def with_sort_data(mech: Mechanism) -> Mechanism:
 
     # Sort reactions by shape and by reagent names
     idx_col = col_.temp()
-    rxn_df = reactions(mech).sort(
+    rxn_df = reactions(mech)
+    rxn_df = rxn_df.sort(
         polars.col(Reaction.reactants).list.len(),
         polars.col(Reaction.products).list.len(),
-        polars.col(Reaction.reactants).list.to_struct(),
-        polars.col(Reaction.products).list.to_struct(),
+        df_.list_to_struct_expression(rxn_df, Reaction.reactants),
+        df_.list_to_struct_expression(rxn_df, Reaction.products),
     )
     rxn_df = df_.with_index(rxn_df, idx_col)
     mech = set_reactions(mech, rxn_df)

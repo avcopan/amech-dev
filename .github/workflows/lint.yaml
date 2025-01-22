@@ -1,4 +1,4 @@
-name: test
+name: lint
 
 on: 
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -26,7 +26,7 @@ jobs:
         run: |
           pixi run -e proto pip install git+https://github.com/Auto-Mech/autochem.git --no-deps
 
-      # Test
-      - name: Test
+      # Lint
+      - name: Lint
         run: |
-          pixi run -e proto pytest -v src/automech
+          pixi run -e proto lint

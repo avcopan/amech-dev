@@ -17,7 +17,7 @@ TEST_UTILS = test_utils.TestUtils(ROOT_DIR / "src" / "mechdriver")
 
 @click.group()
 def main():
-    """Testing CLI"""
+    """Route to appropriate subcommand."""
     pass
 
 

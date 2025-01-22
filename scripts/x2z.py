@@ -12,7 +12,7 @@ import click
 @click.option(
     "-o", "--out_path", default="geom.zmat", help="Path to z-matrix output file"
 )
-def main(xyz_path: str, rxn_path: str = None, out_path: str = "geom.zmat"):
+def main(xyz_path: str, rxn_path: str | None = None, out_path: str = "geom.zmat"):
     geo = automol.geom.from_xyz_string(Path(xyz_path).read_text())
     if rxn_path is None:
         zma = automol.geom.zmatrix(geo)
@@ -28,7 +28,7 @@ def main(xyz_path: str, rxn_path: str = None, out_path: str = "geom.zmat"):
 
 
 def write_zmatrix(zma: object, out_path: str) -> None:
-    """Write a z-matrix to a file
+    """Write a z-matrix to a file.
 
     :param zma: Z-matrix
     :param out_path: File path to write to

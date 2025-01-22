@@ -287,6 +287,8 @@ def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     if ReactionRate.colliders not in rxn_df:
         rxn_df = rxn_df.with_columns(polars.lit(coll0).alias(ReactionRate.colliders))
 
+    rate0 = polars.lit(rate0, dtype=df_.dtype(rxn_df, ReactionRate.rate))
+    coll0 = polars.lit(coll0, dtype=df_.dtype(rxn_df, ReactionRate.colliders))
     rxn_df = rxn_df.with_columns(polars.col(ReactionRate.rate).fill_null(rate0))
     rxn_df = rxn_df.with_columns(polars.col(ReactionRate.colliders).fill_null(coll0))
     return rxn_df

@@ -29,6 +29,29 @@ def count(df: polars.DataFrame) -> int:
     return df.select(polars.len()).item()
 
 
+def dtype(df: polars.DataFrame, col_: str | Sequence[str]) -> str | list[str]:
+    """Get column(s) data type(s).
+
+    :param df: DataFrame
+    :param col_: Column(s)
+    :return: Data type(s)
+    """
+    is_bare = m_col_.is_bare_column_argument(col_)
+    col_ = m_col_.normalize_column_argument(col_)
+    dtypes = [df.schema[col] for col in col_]
+    return dtypes[0] if is_bare else dtypes
+
+
+def fields(df: polars.DataFrame, col: str) -> list[str]:
+    """Get fields of a Struct column.
+
+    :param df: DataFrame
+    :param col: Column
+    :return: Fields
+    """
+    return [f.name for f in df.schema[col].fields]
+
+
 def values(
     df: polars.DataFrame,
     col_: str | Sequence[str],
@@ -108,7 +131,8 @@ def left_update(
 
     # Fill nulls from join with their original values
     df1 = df1.with_columns(
-        *(polars.col(c0).fill_null(polars.col(c)) for c0, c in clash_dct.items())
+        polars.col(c0).fill_null(polars.col(c).cast(dtype(df1, c0), strict=False))
+        for c0, c in clash_dct.items()
     )
     df1 = df1.drop(tmp_col)
 
@@ -479,8 +503,21 @@ def list_to_struct(
     assert all(df.schema[c].base_type() is polars.List for c in col_)
     # Convert list to struct
     return df.with_columns(
-        polars.col(c).list.to_struct("max_width").alias(o)
+        list_to_struct_expression(df, c).alias(o)
         for c, o in zip(col_, col_out_, strict=True)
+    )
+
+
+def list_to_struct_expression(df: polars.DataFrame, col: str) -> polars.Expr:
+    """Form an expression for converting list to struct column.
+
+    :param df: DataFrame
+    :param col: Column
+    :return: Expression
+    """
+    nmax = df.get_column(col).list.len().max()
+    return polars.col(col).list.to_struct(
+        "max_width", fields=[f"{col}_field_{i}" for i in range(nmax)]
     )
 
 
