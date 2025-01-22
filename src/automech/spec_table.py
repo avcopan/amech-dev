@@ -58,6 +58,21 @@ def species_names_by_id(
 
 
 # update
+def update(
+    spc_df: polars.DataFrame,
+    src_spc_df: polars.DataFrame,
+    key_col_: str | Sequence[str] = ID_COLS,
+) -> polars.DataFrame:
+    """Left-update species data by species key.
+
+    :param spc_df: Species DataFrame
+    :param src_spc_df: Source species DataFrame
+    :param key_col_: Species key column(s)
+    :return: Species DataFrame
+    """
+    return df_.update(spc_df, src_spc_df, col_=key_col_)
+
+
 def left_update(
     spc_df: polars.DataFrame,
     src_spc_df: polars.DataFrame,

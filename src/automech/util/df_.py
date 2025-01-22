@@ -100,6 +100,36 @@ def with_index(df: polars.DataFrame, col: str = "index") -> polars.DataFrame:
     return df.with_row_index(name=col)
 
 
+def update(
+    df1: polars.DataFrame,
+    df2: polars.DataFrame,
+    col_: str | Sequence[str],
+) -> polars.DataFrame:
+    """Update one DataFrame by another.
+
+    Removes overlapping data from first DataFrame and inserts all data from second
+    DataFrame.
+
+    :param df1: First DataFrame
+    :param df2: Second DataFrame
+    :param col_: Column(s) to join on
+    :return: DataFrame
+    """
+    col_ = m_col_.normalize_column_argument(col_)
+
+    # Form join columns (needed if multiple are used)
+    key_col = m_col_.temp()
+    df1 = with_concat_string_column(df1, key_col, col_)
+    df2 = with_concat_string_column(df2, key_col, col_)
+
+    int_col = m_col_.temp()
+    df1 = with_intersection_column(df1, df2, key_col, col=int_col)
+    df1 = df1.filter(~polars.col(int_col))
+    df1 = polars.concat([df1, df2], how="diagonal_relaxed")
+    df1 = df1.drop(int_col, key_col)
+    return df1
+
+
 def left_update(
     df1: polars.DataFrame,
     df2: polars.DataFrame,

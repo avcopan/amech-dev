@@ -89,6 +89,23 @@ def reagent_strings(
 
 
 # update
+def update(rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame) -> polars.DataFrame:
+    """Update reaction data by reaction key.
+
+    :param rxn_df: reaction DataFrame
+    :param src_rxn_df: Source reaction DataFrame
+    :return: Reaction DataFrame
+    """
+    # Add reaction keys
+    tmp_col = col_.temp()
+    rxn_df = with_key(rxn_df, tmp_col)
+    src_rxn_df = with_key(src_rxn_df, tmp_col)
+
+    # Update
+    rxn_df = df_.update(rxn_df, src_rxn_df, col_=tmp_col)
+    return rxn_df
+
+
 def left_update(
     rxn_df: polars.DataFrame,
     src_rxn_df: polars.DataFrame,
@@ -101,8 +118,6 @@ def left_update(
     :param drop_orig: Whether to drop original column values
     :return: Reaction DataFrame
     """
-    drop_cols = m_col_.orig(schema.columns(Reaction))
-
     # Add reaction keys
     tmp_col = col_.temp()
     rxn_df = with_key(rxn_df, tmp_col)
@@ -110,9 +125,6 @@ def left_update(
 
     # Update
     rxn_df = df_.left_update(rxn_df, src_rxn_df, col_=tmp_col, drop_orig=drop_orig)
-
-    # Drop unnecessary columns
-    rxn_df = rxn_df.drop(tmp_col, *drop_cols, strict=False)
     return rxn_df
 
 
