@@ -6,7 +6,7 @@ import automol
 import polars
 
 from . import schema
-from .schema import Species, SpeciesMisc, SpeciesThermo
+from .schema import Species
 from .util import col_, df_
 
 m_col_ = col_
@@ -72,31 +72,7 @@ def left_update(
     :param drop_orig: Whether to drop the original column values
     :return: Species DataFrame
     """
-    # Update
-    spc_df = df_.left_update(spc_df, src_spc_df, col_=key_col_, drop_orig=drop_orig)
-
-    # Drop unnecessary columns
-    drop_cols = [m_col_.orig(c) for c in schema.columns(Species) if c != Species.name]
-    spc_df = spc_df.drop(drop_cols, strict=False)
-    return spc_df
-
-
-def left_update_thermo(
-    spc_df: polars.DataFrame, src_spc_df: polars.DataFrame
-) -> polars.DataFrame:
-    """Read thermochemical data from one dataframe into another.
-
-    (AVC note: I think this can be deprecated...)
-
-    :param spc_df: Species DataFrame
-    :param src_spc_df: Species DataFrame with thermochemical data
-    :return: Species DataFrame
-    """
-    spc_df = spc_df.rename(
-        {SpeciesThermo.thermo_string: SpeciesMisc.orig_thermo_string}, strict=False
-    )
-    spc_df = spc_df.join(src_spc_df, how="left", on=Species.name)
-    return schema.species_table(spc_df, model_=SpeciesThermo)
+    return df_.left_update(spc_df, src_spc_df, col_=key_col_, drop_orig=drop_orig)
 
 
 # add rows

@@ -116,34 +116,6 @@ def left_update(
     return rxn_df
 
 
-def left_update_rates(
-    rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame
-) -> polars.DataFrame:
-    """Read thermochemical data from one dataframe into another.
-
-    (AVC note: I think this can be deprecated and replaced with the more general
-    function above...)
-
-    :param rxn_df: Reactions DataFrame
-    :param src_rxn_df: Reactions DataFrame with thermochemical data
-    :return: reactions DataFrame
-    """
-    rxn_df = rxn_df.rename(col_.to_orig(ReactionRate.rate), strict=False)
-
-    if has_colliders(rxn_df):
-        raise NotImplementedError(
-            f"Updating rates with colliders not yet implemented.\n{rxn_df}"
-        )
-
-    col_key = col_.temp()
-    rxn_df = with_key(rxn_df, col=col_key)
-    src_rxn_df = with_key(src_rxn_df, col=col_key)
-    rxn_df = rxn_df.join(src_rxn_df, how="left", on=col_key)
-    rxn_df = rxn_df.drop(col_key, polars.selectors.ends_with("_right"))
-    rxn_df, *_ = schema.reaction_table(rxn_df, model_=ReactionRate)
-    return rxn_df
-
-
 # add/remove rows
 def add_missing_reactions_by_id(
     rxn_df: polars.DataFrame, rxn_ids: Sequence[ReactionId]

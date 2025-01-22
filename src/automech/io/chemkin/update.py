@@ -42,5 +42,5 @@ def rates(mech: Mechanism, inp_: TextInput | Sequence[TextInput]) -> Mechanism:
         assert err.is_empty(), f"\ninp = {inp}\nerr = {err}"
 
     rxn_df0 = _mech.reactions(mech)
-    rxn_df = reac_table.left_update_rates(rxn_df0, polars.concat(rxn_dfs))
+    rxn_df = reac_table.left_update(rxn_df0, polars.concat(rxn_dfs))
     return _mech.set_reactions(mech, rxn_df)
