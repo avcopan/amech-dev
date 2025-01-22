@@ -80,6 +80,7 @@ pandera = "*"
 polars = "*"
 cantera = "*"
 pyarrow = "*"
+altair-all = ">=5.5.0,<6"
 
 [tool.pixi.environments]
 build = ["build"]
