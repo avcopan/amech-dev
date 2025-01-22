@@ -517,7 +517,9 @@ def list_to_struct_expression(df: polars.DataFrame, col: str) -> polars.Expr:
     """
     nmax = df.get_column(col).list.len().max()
     return polars.col(col).list.to_struct(
-        "max_width", fields=[f"{col}_field_{i}" for i in range(nmax)]
+        # Note: The field names *must* be consistent for cross-sorting!
+        "max_width",
+        fields=[f"field_{i}" for i in range(nmax)],
     )
 
 
@@ -542,7 +544,8 @@ def struct_to_list(
     assert len(col_) == len(col_out_), f"{col_} !~ {col_out_}"
     assert all(df.schema[c].base_type() is polars.Struct for c in col_)
     # Convert struct to list
-    fields_ = {c: [f.name for f in df.schema[c].fields] for c in col_}.get
+    # (sort the field names to be sure they come out in the expected order)
+    fields_ = {c: sorted(f.name for f in df.schema[c].fields) for c in col_}.get
     df = df.with_columns(
         polars.concat_list(polars.col(c).struct.field(f) for f in fields_(c)).alias(o)
         for c, o in zip(col_, col_out_, strict=True)
