@@ -1,6 +1,7 @@
 """Definition and core functionality of mechanism data structure."""
 
 import dataclasses
+import functools
 import itertools
 import json
 import textwrap
@@ -254,13 +255,17 @@ def thermo_temperatures(mech: Mechanism) -> tuple[float, float, float] | None:
 thermo_temperatures_ = thermo_temperatures
 
 
-def rate_units(mech: Mechanism) -> tuple[str, str] | None:
-    """Get rate units for mechanism.
+def rate_units(mech_: Mechanism | Sequence[Mechanism]) -> tuple[str, str] | None:
+    """Get rate units for mechanism(s).
 
-    :param mech: Mechanism
+    If multiple mechanisms are passed in, this gets the first non-null units.
+
+    :param mech_: Mechanism(s)
     :return: Rate units
     """
-    return mech.rate_units
+    if isinstance(mech_, Sequence):
+        return next((rate_units(m) for m in mech_ if m.rate_units is not None), None)
+    return mech_.rate_units
 
 
 rate_units_ = rate_units
@@ -975,6 +980,26 @@ def _expand_species_stereo(
 
 
 # binary operations
+def common_rate_units_all(mechs: Sequence[Mechanism]) -> list[Mechanism]:
+    """Convert mechanisms to common rate units.
+
+    :param mechs: Mechanisms
+    :return: Mechanisms with common rate units
+    """
+    units = rate_units(mechs)
+    return [set_rate_units(m, units=units) for m in mechs]
+
+
+def combine_all(mechs: Sequence[Mechanism]) -> Mechanism:
+    """Combine mechanisms into one.
+
+    :param mechs: Mechanisms
+    :return: Mechanism
+    """
+    mechs = common_rate_units_all(mechs)
+    return functools.reduce(update, mechs)
+
+
 def intersection(
     mech1: Mechanism, mech2: Mechanism, right: bool = False, stereo: bool = True
 ) -> tuple[Mechanism, Mechanism]:
@@ -1025,7 +1050,7 @@ def difference(
     return update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
 
 
-def update(mech1: Mechanism, mech2: Mechanism) -> Mechanism:
+def update(mech1: Mechanism, mech2: Mechanism, keep_left: bool = False) -> Mechanism:
     """Update one mechanism with species and reactions from another.
 
     Any overlapping species or reactions will be replaced with those of the second
@@ -1033,10 +1058,13 @@ def update(mech1: Mechanism, mech2: Mechanism) -> Mechanism:
 
     :param mech1: First mechanism
     :param mech2: Second mechanism
+    :param keep_left: Whether to keep data for `mech1` instead of `mech2`
     :return: Updated mechanism
     """
+    mech1, mech2 = (mech2, mech1) if keep_left else (mech1, mech2)
+
     # Use the rate units of the second mechanism
-    mech1 = set_rate_units(mech1, units=rate_units(mech2))
+    mech1, mech2 = common_rate_units_all((mech1, mech2))
 
     # Get intersection information for the first mechanism
     tmp_col = col_.temp()
@@ -1069,7 +1097,7 @@ def left_update(
     :return: Mechanism
     """
     # Use the rate units of the second mechanism
-    mech1 = set_rate_units(mech1, units=rate_units(mech2))
+    mech1, mech2 = common_rate_units_all((mech1, mech2))
 
     spc_df = species(mech1)
     rxn_df = reactions(mech1)

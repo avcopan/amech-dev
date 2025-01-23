@@ -5,6 +5,8 @@ from ._mech import (
     Mechanism,
     add_reactions,
     are_equivalent,
+    combine_all,
+    common_rate_units_all,
     difference,
     display,
     display_reactions,
@@ -86,6 +88,8 @@ __all__ = [
     "with_key",
     "expand_stereo",
     # binary operations
+    "common_rate_units_all",
+    "combine_all",
     "intersection",
     "difference",
     "update",
