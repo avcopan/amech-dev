@@ -103,7 +103,7 @@ def update(rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame) -> polars.Dat
 
     # Update
     rxn_df = df_.update(rxn_df, src_rxn_df, col_=tmp_col)
-    return rxn_df
+    return rxn_df.drop(tmp_col)
 
 
 def left_update(
@@ -125,7 +125,7 @@ def left_update(
 
     # Update
     rxn_df = df_.left_update(rxn_df, src_rxn_df, col_=tmp_col, drop_orig=drop_orig)
-    return rxn_df
+    return rxn_df.drop(tmp_col)
 
 
 # add/remove rows

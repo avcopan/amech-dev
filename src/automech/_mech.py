@@ -1211,7 +1211,7 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
         rxns = data.reac.expand_lumped_species(rxn0, exp_dct=exp_dct)
         rcts_lst = list(map(data.reac.reactants, rxns))
         prds_lst = list(map(data.reac.products, rxns))
-        rates = list(map(dict, map(data.reac.rate, rxns)))
+        rates = list(map(dict, map(data.reac.rate_dict, rxns)))
         return rcts_lst, prds_lst, rates
 
     cols = [Reaction.reactants, Reaction.products, ReactionRate.rate]
