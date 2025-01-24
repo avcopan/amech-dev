@@ -131,7 +131,7 @@ def reactions(
     # Prepare data columns
     reactants_lst = list(map(data.reac.reactants, rxns))
     products_lst = list(map(data.reac.products, rxns))
-    rates = list(map(dict, map(data.reac.rate, rxns)))
+    rates = list(map(dict, map(data.reac.rate_dict, rxns)))
     coll_dcts = list(map(data.reac.colliders, rxns))
     # Polars doesn't allow missing values for Struct-valued columns, so replace `None`
     # with an empty collider dictionary

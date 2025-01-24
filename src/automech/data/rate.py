@@ -8,44 +8,22 @@ import copy
 import dataclasses
 import enum
 from collections import defaultdict
-from collections.abc import Callable, Sequence
-from typing import Any
+from collections.abc import Sequence
 
 import more_itertools as mit
 import numpy
 import pint
 import pyparsing as pp
+from pydantic import BaseModel, ConfigDict
 from pyparsing import pyparsing_common as ppc
 
 U = pint.UnitRegistry()
 
 MatrixLike = Sequence[Sequence[float]] | numpy.ndarray
 
-
-def add_dict_conversion(
-    map_dct: dict[type, Callable[[object], object]] | None = None,
-    drop_none: bool = False,
-) -> Callable[[type], type]:
-    """Add dict conversion to a class by overriding the `__iter__()` method.
-
-    :param map_dct: A dictionary mapping attributes to value processing functions
-    :param drop_none: Drop items with `None` values upon `dict()` conversion?
-    :return: A decorator adding the appropriate `__iter__()` method to the class
-    """
-    map_dct = {} if map_dct is None else map_dct
-
-    def _iter(self):
-        yield from {
-            k: map_dct[k](v) if k in map_dct else v
-            for k, v in self.__dict__.items()
-            if not (drop_none and v is None)
-        }.items()
-
-    def decorate(cls: type) -> type:
-        cls.__iter__ = _iter
-        return cls
-
-    return decorate
+MODEL_CONFIG = ConfigDict(
+    use_enum_values=True, validate_default=True, arbitrary_types_allowed=True
+)
 
 
 class RateType(str, enum.Enum):
@@ -58,6 +36,14 @@ class RateType(str, enum.Enum):
     PLOG = "Plog"
     CHEB = "Chebyshev"
 
+    @classmethod
+    def _missing_(cls, value: str):
+        value = value.lower()
+        for member in cls:
+            if member.value.lower() == value:
+                return member
+        return None
+
 
 class BlendType(str, enum.Enum):
     """The type of blending function for high and low-pressure rates."""
@@ -65,10 +51,16 @@ class BlendType(str, enum.Enum):
     LIND = "Lind"
     TROE = "Troe"
 
+    @classmethod
+    def _missing_(cls, value: str):
+        value = value.lower()
+        for member in cls:
+            if member.value.lower() == value:
+                return member
+        return None
 
-@add_dict_conversion(drop_none=True)
-@dataclasses.dataclass
-class ArrheniusFunction:
+
+class ArrheniusFunction(BaseModel):
     """An Arrhenius or Landau-Teller function (see cantera.Arrhenius).
 
     :param A: The pre-exponential factor [(m^3/kmol)**o/s]
@@ -83,14 +75,6 @@ class ArrheniusFunction:
     E: float = 0.0
     B: float | None = None
     C: float | None = None
-
-    def __post_init__(self):
-        """Initialize attributes."""
-        self.A = float(self.A)
-        self.b = float(self.b)
-        self.E = float(self.E)
-        self.B = None if self.B is None else float(self.B)
-        self.C = None if self.C is None else float(self.C)
 
     def __mul__(self, factor: float | int):
         """Multiply this Arrhenius function by a scalar factor.
@@ -123,27 +107,6 @@ class ArrheniusFunction:
         )
 
 
-def arrhenius_function_from_data(
-    data: Sequence[float] | dict[str, float | None] | ArrheniusFunction,
-) -> ArrheniusFunction | None:
-    """Build an Arrhenius function object from data.
-
-    :param data: The Arrhenius parameters (A, b, E), optionally followed by the two
-        Landau factors (B, C)
-    :return: The Arrhenius function object
-    """
-    if isinstance(data, ArrheniusFunction):
-        return ArrheniusFunction(*arrhenius_params(data))
-
-    if isinstance(data, dict):
-        if all(v is None for v in data.values()):
-            return None
-
-        return ArrheniusFunction(**data)
-
-    return ArrheniusFunction(*data)
-
-
 def arrhenius_params(k: ArrheniusFunction, lt: bool = True) -> tuple[float, ...]:
     """Get the parameters for an Arrhenius or Landau-Teller function.
 
@@ -174,9 +137,7 @@ def arrhenius_string(
     return write_numbers(nums=nums, always_sci=always_sci, digits=digits)
 
 
-@add_dict_conversion(map_dct={"type_": lambda x: x.value}, drop_none=True)
-@dataclasses.dataclass
-class BlendingFunction:
+class BlendingFunction(BaseModel):
     """A blending function for high and low-pressure rates (see cantera.Falloff).
 
     Types:
@@ -187,37 +148,10 @@ class BlendingFunction:
     :param type_: The type of parametrization: "Lind", "Troe"
     """
 
+    model_config = MODEL_CONFIG
+
     type_: BlendType = BlendType.LIND
     coeffs: list[float] | None = None
-
-    def __post_init__(self):
-        """Initialize attributes."""
-        self.type_ = BlendType(self.type_)
-        self.coeffs = None if self.coeffs is None else list(map(float, self.coeffs))
-
-
-def blending_function_from_data(
-    data: tuple[str | BlendType, Sequence[float]] | dict[str, object] | BlendingFunction
-) -> BlendingFunction | None:
-    """Build a blending function object from data.
-
-    If a blending function is passed in, it will be returned as-is.
-
-    :param data: _description_
-    :return: _description_
-    """
-    if isinstance(data, BlendingFunction):
-        coeffs = f_coeffs(data)
-        type_ = f_type(data)
-        return BlendingFunction(type_=type_, coeffs=coeffs)
-
-    if isinstance(data, dict):
-        if all(v is None for v in data.values()):
-            return None
-
-        return BlendingFunction(**data)
-
-    return BlendingFunction(*data)
 
 
 def f_coeffs(f: BlendingFunction) -> BlendType:
@@ -238,31 +172,17 @@ def f_type(f: BlendingFunction) -> BlendType:
     return f.type_
 
 
-class Rate(abc.ABC):
+class Rate(BaseModel, abc.ABC):
     """Base class for reaction rates.
 
-    :param k: Primary Arrhenius function
     :param is_rev: Whether this rate describes a reversible reaction
     :param type_: The type of reaction
     """
 
-    # @property
-    # @abc.abstractmethod
-    # def k(self):
-    #     """The primary Arrhenius function."""
-    #     pass
+    model_config = MODEL_CONFIG
 
-    @property
-    @abc.abstractmethod
-    def type_(self):
-        """The type of reaction."""
-        pass
-
-    @property
-    @abc.abstractmethod
-    def is_rev(self):
-        """Whether this rate describes a reversible reaction."""
-        pass
+    is_rev: bool = True
+    type_: RateType
 
     @abc.abstractmethod
     def __mul__(self, factor: float | int):
@@ -292,16 +212,6 @@ class Rate(abc.ABC):
         pass
 
 
-@add_dict_conversion(
-    map_dct={
-        "k": lambda x: dict(x),
-        "k0": lambda x: dict(x),
-        "f": lambda x: dict(x),
-        "type_": lambda x: x.value,
-    },
-    drop_none=True,
-)
-@dataclasses.dataclass
 class SimpleRate(Rate):
     """Simple reaction rate, k(T,P) parametrization (see cantera.ReactionRate).
 
@@ -330,22 +240,6 @@ class SimpleRate(Rate):
 
     def __post_init__(self):
         """Initialize attributes."""
-        self.k = arrhenius_function_from_data(self.k)
-        self.k0 = None if self.k0 is None else arrhenius_function_from_data(self.k0)
-        self.f = None if self.f is None else blending_function_from_data(self.f)
-
-        self.type_ = RateType.CONSTANT if self.type_ is None else RateType(self.type_)
-        assert self.type_ in (
-            RateType.CONSTANT,
-            RateType.THIRD_BODY,
-            RateType.FALLOFF,
-            RateType.ACTIVATED,
-        )
-
-        if self.type_ in (RateType.CONSTANT, RateType.THIRD_BODY):
-            assert self.f is None, f"f={self.f} requires P-dependent reaction type"
-            assert self.k0 is None, f"k={self.k0} requires P-dependent reaction type"
-
         if self.type_ in (RateType.FALLOFF, RateType.ACTIVATED):
             self.f = BlendingFunction() if self.f is None else self.f
 
@@ -390,16 +284,6 @@ class SimpleRate(Rate):
         )
 
 
-@add_dict_conversion(
-    map_dct={
-        "ks": lambda x: list(map(dict, x)),
-        "ps": lambda x: list(x),
-        "k": lambda x: dict(x),
-        "type_": lambda x: x.value,
-    },
-    drop_none=True,
-)
-@dataclasses.dataclass
 class PlogRate(Rate):
     """P-Log reaction rate, k(T,P) parametrization (see cantera.ReactionRate).
 
@@ -409,19 +293,11 @@ class PlogRate(Rate):
     :param is_rev: Is this a reversible reaction?
     """
 
-    ks: tuple[ArrheniusFunction, ...]
-    ps: tuple[float, ...]
+    ks: list[ArrheniusFunction]
+    ps: list[float]
     k: ArrheniusFunction | None = None
     is_rev: bool = True
     type_: RateType = RateType.PLOG
-
-    def __post_init__(self):
-        """Initialize attributes."""
-        self.ks = tuple(map(arrhenius_function_from_data, self.ks))
-        self.ps = tuple(map(float, self.ps))
-        self.k = None if self.k is None else arrhenius_function_from_data(self.k)
-        self.type_ = RateType.PLOG if self.type_ is None else RateType(self.type_)
-        assert self.type_ == RateType.PLOG
 
     def __mul__(self, factor: float | int):
         """Multiply this rate by a scalar factor.
@@ -454,17 +330,6 @@ class PlogRate(Rate):
         )
 
 
-@add_dict_conversion(
-    map_dct={
-        "t_limits": lambda x: list(x),
-        "p_limits": lambda x: list(x),
-        "coeffs": lambda x: x.tolist(),
-        "k": lambda x: dict(x),
-        "type_": lambda x: x.value,
-    },
-    drop_none=True,
-)
-@dataclasses.dataclass
 class ChebRate(Rate):
     """Chebyshev reaction rate, k(T,P) parametrization (see cantera.ReactionRate).
 
@@ -477,20 +342,10 @@ class ChebRate(Rate):
 
     t_limits: tuple[float, float]
     p_limits: tuple[float, float]
-    coeffs: numpy.ndarray
+    coeffs: list[list[float]]
     k: ArrheniusFunction | None = None
     is_rev: bool = True
     type_: str = RateType.CHEB
-
-    def __post_init__(self):
-        """Initialize attributes."""
-        self.t_limits = tuple(map(float, self.t_limits))
-        self.p_limits = tuple(map(float, self.p_limits))
-        self.coeffs = numpy.array(self.coeffs)
-        assert numpy.ndim(self.coeffs) == 2, f"Must be 2-dimensional: {self.coeffs}"
-        self.k = None if self.k is None else arrhenius_function_from_data(self.k)
-        self.type_ = RateType.CHEB if self.type_ is None else RateType(self.type_)
-        assert self.type_ == RateType.CHEB
 
     def __mul__(self, factor: float | int):
         """Multiply this rate by a scalar factor.
@@ -582,7 +437,7 @@ def from_chemkin_string(
     # Split off the equation
     lines = rate_str.strip().splitlines()
     first_line = lines[0]
-    k = list(map(float, first_line.split()[-3:]))
+    k = arr_(list(map(float, first_line.split()[-3:])))
 
     aux_str = "\n".join(lines[1:])
 
@@ -605,18 +460,18 @@ def from_chemkin_string(
     type_ = RateType.CONSTANT if coll is None else RateType.THIRD_BODY
     k0 = None
     if "LOW" in aux_dct:
-        k0 = aux_dct.get("LOW")
+        k0 = arr_(aux_dct.get("LOW"))
         type_ = RateType.FALLOFF
 
     if "HIGH" in aux_dct:
         k0 = k
-        k = aux_dct.get("HIGH")
+        k = arr_(aux_dct.get("HIGH"))
         type_ = RateType.ACTIVATED
 
     plog_ks = plog_ps = None
     if "PLOG" in aux_dct:
-        plog_ks = tuple(c[1:] for c in aux_dct["PLOG"])
-        plog_ps = tuple(c[0] for c in aux_dct["PLOG"])
+        plog_ks = [arr_(c[1:]) for c in aux_dct["PLOG"]]
+        plog_ps = [c[0] for c in aux_dct["PLOG"]]
         type_ = RateType.PLOG
 
     cheb_t_limits = cheb_p_limits = cheb_coeffs = None
@@ -631,7 +486,7 @@ def from_chemkin_string(
     # Pre-process blending function data
     f = None
     if "TROE" in aux_dct:
-        f = (BlendType.TROE, aux_dct.get("TROE"))
+        f = BlendingFunction(type_=BlendType.TROE, coeffs=aux_dct.get("TROE"))
 
     coll_dct = {}
     if coll is not None:
@@ -980,7 +835,7 @@ def chemkin_string(rate: Rate, eq_width: int = 0) -> str:
 
 
 # Legacy
-def to_old_object(rate: Rate) -> Any:
+def to_old_object(rate: Rate) -> object:
     """Convert a new rate object to an old one.
 
     :param rate: The rate object
@@ -1108,6 +963,16 @@ def number_list_expr(
     """
     nmax = nmin if nmax is None else nmax
     return pp.DelimitedList(ppc.number.copy(), delim=delim, min=nmin, max=nmax)
+
+
+def arr_(params: Sequence[float]) -> ArrheniusFunction:
+    """Build an Arrhenius function from a list of parameters.
+
+    :param params: The parameters A, b, E, (B, C)
+    :return: The Arrhenius function
+    """
+    fields = ArrheniusFunction.model_fields.keys()
+    return ArrheniusFunction(**dict(zip(fields, params, strict=False)))
 
 
 SLASH = pp.Suppress(pp.Literal("/"))

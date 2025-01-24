@@ -262,7 +262,7 @@ def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     :param rxn_df: Reaction DataFrame
     :return: Reaction DataFrame
     """
-    rate0 = dict(data.rate.SimpleRate())
+    rate0 = data.rate.SimpleRate().model_dump()
     coll0 = {"M": None}
 
     if ReactionRate.rate not in rxn_df:

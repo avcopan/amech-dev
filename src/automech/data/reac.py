@@ -107,6 +107,15 @@ def rate(rxn: Reaction) -> Rate:
     return rxn.rate
 
 
+def rate_dict(rxn: Reaction) -> dict[str, object]:
+    """Get the rate constant.
+
+    :param rxn: A reaction object
+    :return: The rate object
+    """
+    return rxn.rate.model_dump()
+
+
 def colliders(rxn: Reaction, aux_only: bool = False) -> dict[str, float] | None:
     """Get the collider, if there is one.
 
