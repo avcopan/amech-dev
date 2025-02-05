@@ -54,7 +54,7 @@ class Reaction(Model):
     formula: Struct
 
 
-class ReactionRate(Model):
+class ReactionRateOld(Model):
     """Reaction table with rate."""
 
     rate: Struct
@@ -90,7 +90,7 @@ class SpeciesMisc(Model):
     orig_thermo_string: str
 
 
-REACTION_MODELS = (Reaction, ReactionRate, ReactionStereo, ReactionCheck)
+REACTION_MODELS = (Reaction, ReactionRateOld, ReactionStereo, ReactionCheck)
 
 
 # Error data structure
@@ -307,9 +307,11 @@ def reaction_table(
     df = df.filter(~check_expr)
     df = df.drop(check_cols)
 
-    if ReactionRate.colliders in df:
-        fill_val = polars.lit({"M": None}, dtype=df_.dtype(df, ReactionRate.colliders))
-        df = df.with_columns(polars.col(ReactionRate.colliders).fill_null(fill_val))
+    if ReactionRateOld.colliders in df:
+        fill_val = polars.lit(
+            {"M": None}, dtype=df_.dtype(df, ReactionRateOld.colliders)
+        )
+        df = df.with_columns(polars.col(ReactionRateOld.colliders).fill_null(fill_val))
 
     for model in model_:
         df = model.validate(df)

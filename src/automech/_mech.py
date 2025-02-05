@@ -16,7 +16,7 @@ from . import net as net_
 from .schema import (
     Model,
     Reaction,
-    ReactionRate,
+    ReactionRateOld,
     ReactionSorted,
     ReactionStereo,
     Species,
@@ -344,7 +344,9 @@ def set_rate_units(
             return dict(rate_obj)
 
         if e_unit0 != e_unit:
-            rxn_df = df_.map_(rxn_df, ReactionRate.rate, ReactionRate.rate, _convert)
+            rxn_df = df_.map_(
+                rxn_df, ReactionRateOld.rate, ReactionRateOld.rate, _convert
+            )
 
     return from_data(
         rxn_inp=rxn_df,
@@ -1191,11 +1193,11 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
     # 2. Reaction table
     #   a. Identify subset of reactions to be expanded
     par_rxn_df = reactions(par_mech)
-    has_rate = ReactionRate.rate in par_rxn_df
+    has_rate = ReactionRateOld.rate in par_rxn_df
     par_rxn_df = reac_table.with_rates(par_rxn_df)
 
     par_rxn_df = par_rxn_df.with_columns(
-        **col_.from_orig([Reaction.reactants, Reaction.products, ReactionRate.rate])
+        **col_.from_orig([Reaction.reactants, Reaction.products, ReactionRateOld.rate])
     )
     needs_exp = (
         polars.concat_list(Reaction.reactants, Reaction.products)
@@ -1214,7 +1216,7 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
         rates = list(map(dict, map(data.reac.rate_dict, rxns)))
         return rcts_lst, prds_lst, rates
 
-    cols = [Reaction.reactants, Reaction.products, ReactionRate.rate]
+    cols = [Reaction.reactants, Reaction.products, ReactionRateOld.rate]
     dtypes = list(map(polars.List, map(exp_rxn_df.schema.get, cols)))
     exp_rxn_df = df_.map_(exp_rxn_df, cols, cols, _expand, dtype_=dtypes, bar=True)
     exp_rxn_df: polars.DataFrame = exp_rxn_df.explode(cols)
@@ -1222,7 +1224,7 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
 
     if not has_rate:
         exp_rxn_df = reac_table.without_rates(exp_rxn_df)
-        exp_rxn_df = exp_rxn_df.drop(col_.orig(ReactionRate.rate))
+        exp_rxn_df = exp_rxn_df.drop(col_.orig(ReactionRateOld.rate))
 
     return from_data(
         rxn_inp=exp_rxn_df,

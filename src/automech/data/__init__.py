@@ -1,6 +1,6 @@
 """Dataclasses for storing kinetic, thermodynamic, and other information."""
 
-from . import rate, reac, thermo
+from . import rate, reac
 from .rate import (
     ArrheniusFunction,
     BlendingFunction,
@@ -11,7 +11,6 @@ from .rate import (
     SimpleRate,
 )
 from .reac import Reaction
-from .thermo import Thermo
 
 __all__ = [
     "rate",
@@ -25,5 +24,4 @@ __all__ = [
     "RateType",
     "SimpleRate",
     "Reaction",
-    "Thermo",
 ]

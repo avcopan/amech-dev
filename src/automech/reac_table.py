@@ -8,7 +8,7 @@ import more_itertools as mit
 import polars
 
 from . import data, schema, spec_table
-from .schema import Reaction, ReactionRate, Species
+from .schema import Reaction, ReactionRateOld, Species
 from .util import col_, df_
 
 m_col_ = col_
@@ -38,8 +38,8 @@ def has_colliders(rxn_df: polars.DataFrame) -> bool:
     :param rxn_df: Reactions DataFrame
     :return: `True` if it does, `False` if not
     """
-    return ReactionRate.colliders in rxn_df and df_.has_values(
-        rxn_df.get_column(ReactionRate.colliders).struct.unnest()
+    return ReactionRateOld.colliders in rxn_df and df_.has_values(
+        rxn_df.get_column(ReactionRateOld.colliders).struct.unnest()
     )
 
 
@@ -49,8 +49,8 @@ def has_rates(rxn_df: polars.DataFrame) -> bool:
     :param rxn_df: Reactions DataFrame
     :return: `True` if it does, `False` if not
     """
-    return ReactionRate.rate in rxn_df and df_.has_values(
-        rxn_df.get_column(ReactionRate.rate).struct.unnest()
+    return ReactionRateOld.rate in rxn_df and df_.has_values(
+        rxn_df.get_column(ReactionRateOld.rate).struct.unnest()
     )
 
 
@@ -265,16 +265,16 @@ def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     rate0 = data.rate.SimpleRate().model_dump()
     coll0 = {"M": None}
 
-    if ReactionRate.rate not in rxn_df:
-        rxn_df = rxn_df.with_columns(polars.lit(rate0).alias(ReactionRate.rate))
+    if ReactionRateOld.rate not in rxn_df:
+        rxn_df = rxn_df.with_columns(polars.lit(rate0).alias(ReactionRateOld.rate))
 
-    if ReactionRate.colliders not in rxn_df:
-        rxn_df = rxn_df.with_columns(polars.lit(coll0).alias(ReactionRate.colliders))
+    if ReactionRateOld.colliders not in rxn_df:
+        rxn_df = rxn_df.with_columns(polars.lit(coll0).alias(ReactionRateOld.colliders))
 
-    rate0 = polars.lit(rate0, dtype=df_.dtype(rxn_df, ReactionRate.rate))
-    coll0 = polars.lit(coll0, dtype=df_.dtype(rxn_df, ReactionRate.colliders))
-    rxn_df = rxn_df.with_columns(polars.col(ReactionRate.rate).fill_null(rate0))
-    rxn_df = rxn_df.with_columns(polars.col(ReactionRate.colliders).fill_null(coll0))
+    rate0 = polars.lit(rate0, dtype=df_.dtype(rxn_df, ReactionRateOld.rate))
+    coll0 = polars.lit(coll0, dtype=df_.dtype(rxn_df, ReactionRateOld.colliders))
+    rxn_df = rxn_df.with_columns(polars.col(ReactionRateOld.rate).fill_null(rate0))
+    rxn_df = rxn_df.with_columns(polars.col(ReactionRateOld.colliders).fill_null(coll0))
     return rxn_df
 
 
@@ -286,11 +286,11 @@ def without_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     :param rxn_df: Reaction DataFrame
     :return: Reaction DataFrame
     """
-    if ReactionRate.rate not in rxn_df:
-        rxn_df = rxn_df.drop(ReactionRate.rate)
+    if ReactionRateOld.rate not in rxn_df:
+        rxn_df = rxn_df.drop(ReactionRateOld.rate)
 
-    if ReactionRate.colliders not in rxn_df:
-        rxn_df = rxn_df.drop(ReactionRate.colliders)
+    if ReactionRateOld.colliders not in rxn_df:
+        rxn_df = rxn_df.drop(ReactionRateOld.colliders)
 
     return rxn_df
 

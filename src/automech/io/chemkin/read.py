@@ -15,7 +15,7 @@ from ..._mech import from_data as mechanism_from_data
 from ...schema import (
     Errors,
     Reaction,
-    ReactionRate,
+    ReactionRateOld,
     Species,
     SpeciesThermo,
 )
@@ -103,7 +103,7 @@ def reactions(
     """
 
     def _is_reaction_line(string: str) -> bool:
-        return re.search(r"\d$", string.strip())
+        return re.search(r"\d\s*$", string)
 
     # Do the parsing
     rxn_block_str = reactions_block(inp, comments=False)
@@ -141,14 +141,14 @@ def reactions(
     data_dct = {
         Reaction.reactants: reactants_lst,
         Reaction.products: products_lst,
-        ReactionRate.rate: rates,
-        ReactionRate.colliders: coll_dcts,
+        ReactionRateOld.rate: rates,
+        ReactionRateOld.colliders: coll_dcts,
     }
     schema_dct = schema.reaction_types(keys=data_dct.keys())
     rxn_df = polars.DataFrame(data=data_dct, schema=schema_dct)
 
     rxn_df, err = schema.reaction_table(
-        rxn_df, spc_df=spc_df, model_=(Reaction, ReactionRate), fail_on_error=False
+        rxn_df, spc_df=spc_df, model_=(Reaction, ReactionRateOld), fail_on_error=False
     )
 
     df_.to_csv(rxn_df, out)
