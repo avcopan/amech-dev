@@ -54,6 +54,11 @@ class Reaction(Model):
     formula: Struct
 
 
+class ReactionRate(Model):
+    reversible: bool
+    rate_constant: Struct
+
+
 class ReactionRateOld(Model):
     """Reaction table with rate."""
 

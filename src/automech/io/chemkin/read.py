@@ -5,9 +5,13 @@ import re
 from collections.abc import Collection
 
 import more_itertools as mit
+import pint
 import polars
 import pyparsing as pp
 from pyparsing import common as ppc
+
+import autochem
+from autochem.util import unit_
 
 from ... import data, schema, spec_table
 from ..._mech import Mechanism
@@ -15,6 +19,7 @@ from ..._mech import from_data as mechanism_from_data
 from ...schema import (
     Errors,
     Reaction,
+    ReactionRate,
     ReactionRateOld,
     Species,
     SpeciesThermo,
@@ -76,10 +81,9 @@ def mechanism(
     """
     spc_df = species(inp, out=spc_out)
     rxn_df, err = reactions(inp, out=out, spc_df=spc_df)
-    rate_units = reactions_units(inp)
     thermo_temps = thermo_temperatures(inp)
     mech = mechanism_from_data(
-        rxn_inp=rxn_df, spc_inp=spc_df, rate_units=rate_units, thermo_temps=thermo_temps
+        rxn_inp=rxn_df, spc_inp=spc_df, thermo_temps=thermo_temps
     )
     return mech, err
 
@@ -87,9 +91,7 @@ def mechanism(
 # reactions
 def reactions(
     inp: TextInput,
-    units: tuple[str, str] | None = None,
     spc_df: polars.DataFrame | None = None,
-    spc_names: Collection[str] | None = None,
     out: TextOutput = None,
 ) -> tuple[polars.DataFrame, Errors]:
     """Extract reaction information as a dataframe from a CHEMKIN file.
@@ -97,10 +99,10 @@ def reactions(
     :param inp: A CHEMKIN mechanism, as a file path or string
     :param units: Convert the rates to these units, if needed
     :param spc_df: A species dataframe to be used for validation
-    :param spc_names: Only include reactions involving these species
     :param out: Optionally, write the output to this file path
     :return: The reactions dataframe, along with any errors that were encountered
     """
+    units = reactions_units(inp)
 
     def _is_reaction_line(string: str) -> bool:
         return re.search(r"\d\s*$", string)
@@ -111,44 +113,21 @@ def reactions(
         lambda s: not _is_reaction_line(s), rxn_block_str.splitlines()
     )
     rxn_strs = list(map("\n".join, mit.split_before(line_iter, _is_reaction_line)))
+    rxns = [autochem.rate.from_chemkin_string(r, units=units) for r in rxn_strs]
 
-    rxns = list(map(data.reac.from_chemkin_string, rxn_strs))
-
-    # Filter by species
-    if spc_names is not None:
-        spc_names = set(spc_names)
-        rxns = [r for r in rxns if set(data.reac.species(r)) <= spc_names]
-
-    # Convert energy units
-    if units is not None:
-        e_unit0, a_unit0 = map(str.lower, reactions_units(inp))
-        e_unit, a_unit = map(str.lower, units)
-        assert (
-            a_unit == a_unit0
-        ), f"{a_unit} != {a_unit0} (conversion of 'a' not yet implemented)"
-        rxns = [data.reac.convert_energy_units(r, e_unit0, e_unit) for r in rxns]
-
-    # Prepare data columns
-    reactants_lst = list(map(data.reac.reactants, rxns))
-    products_lst = list(map(data.reac.products, rxns))
-    rates = list(map(dict, map(data.reac.rate_dict, rxns)))
-    coll_dcts = list(map(data.reac.colliders, rxns))
-    # Polars doesn't allow missing values for Struct-valued columns, so replace `None`
-    # with an empty collider dictionary
-    coll_dcts = [{"M": None} if d is None else d for d in coll_dcts]
-
-    # Build dataframe
     data_dct = {
-        Reaction.reactants: reactants_lst,
-        Reaction.products: products_lst,
-        ReactionRateOld.rate: rates,
-        ReactionRateOld.colliders: coll_dcts,
+        Reaction.reactants: [r.reactants for r in rxns],
+        Reaction.products: [r.products for r in rxns],
+        ReactionRate.reversible: [r.reversible for r in rxns],
+        ReactionRate.rate_constant: [r.rate_constant.model_dump() for r in rxns],
     }
-    schema_dct = schema.reaction_types(keys=data_dct.keys())
-    rxn_df = polars.DataFrame(data=data_dct, schema=schema_dct)
+    schema_dct = schema.types([Reaction, ReactionRate], keys=data_dct.keys())
+    rxn_df = polars.DataFrame(
+        data=data_dct, schema=schema_dct, infer_schema_length=None
+    )
 
     rxn_df, err = schema.reaction_table(
-        rxn_df, spc_df=spc_df, model_=(Reaction, ReactionRateOld), fail_on_error=False
+        rxn_df, spc_df=spc_df, model_=[Reaction, ReactionRate], fail_on_error=False
     )
 
     df_.to_csv(rxn_df, out)
@@ -156,33 +135,45 @@ def reactions(
     return rxn_df, err
 
 
-def reactions_block(inp: TextInput, comments: bool = True) -> str:
+def reactions_block(
+    inp: TextInput, comments: bool = True, strip: bool = True
+) -> str | None:
     """Get the reactions block, starting with 'REACTIONS' and ending in 'END'.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
+    :param comments: Include comments?
+    :param strip: Strip spaces from the ends?
     :return: The block
     """
-    return block(inp, KeyWord.REACTIONS, comments=comments)
+    return block(inp, KeyWord.REACTIONS, comments=comments, strip=strip)
 
 
-def reactions_units(inp: TextInput, default: bool = True) -> tuple[str, str]:
-    """Get the E and A units for reaction rate constants.
+def reactions_units(inp: TextInput) -> unit_.Units:
+    """Get the units for reaction rate constants.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
     :param default: Return default values, if missing?
     :return: The units for E and A, respectively
     """
-    e_default = KeyWord.CAL_MOLE if default else None
-    a_default = KeyWord.MOLES if default else None
+    rxn_block_str = reactions_block(inp, comments=False, strip=False)
+    assert isinstance(rxn_block_str, str), f"inp = {inp}"
 
-    rxn_block_str = reactions_block(inp, comments=False)
-    parser = E_UNIT("e_unit") + A_UNIT("a_unit")
-    res = parser.parse_string(rxn_block_str).as_dict()
-    e_unit = res.get("e_unit", e_default)
-    a_unit = res.get("a_unit", a_default)
-    e_unit = e_unit.upper() if isinstance(e_unit, str) else None
-    a_unit = a_unit.upper() if isinstance(a_unit, str) else None
-    return e_unit, a_unit
+    line1 = rxn_block_str.splitlines()[0]
+    line1_units = list(map(pint.Unit, map(str.lower, line1.split())))
+
+    substance = next((u for u in line1_units if u.is_compatible_with("mol")), "mol")
+    energy_per_substance = next(
+        (u for u in line1_units if u.is_compatible_with("cal/mol")), "cal/mol"
+    )
+    energy = unit_.dimension_unit(energy_per_substance, "energy")
+
+    assert substance == unit_.dimension_unit(
+        energy_per_substance, "substance"
+    ), f"Incompatible units: {substance} !~ {energy_per_substance}"
+
+    units = unit_.CHEMKIN_UNITS
+    units = units.update({"energy": energy, "substance": substance})
+    return units
 
 
 # species
@@ -321,12 +312,15 @@ def thermo_entry_dict(inp: TextInput) -> dict[str, str]:
 
 
 # generic
-def block(inp: TextInput, key: str, comments: bool = False) -> str:
+def block(
+    inp: TextInput, key: str, comments: bool = False, strip: bool = True
+) -> str | None:
     """Get a keyword block, starting with a key and ending in 'END'.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
     :param key: The key that the block starts with
     :param comments: Include comments?
+    :param strip: Strip spaces from the ends?
     :return: The block
     """
     inp = io_.read_text(inp)
@@ -341,7 +335,7 @@ def block(inp: TextInput, key: str, comments: bool = False) -> str:
     if not comments:
         block_str = without_comments(block_str)
 
-    return block_str.strip()
+    return block_str.strip() if strip else block_str
 
 
 def without_comments(inp: TextInput) -> str:
