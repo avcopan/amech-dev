@@ -525,9 +525,7 @@ def reaction_species_names(mech: OldMechanism) -> list[str]:
     return list(mit.unique_everseen(itertools.chain(*rxn_names)))
 
 
-def rename_dict(
-    mech1: OldMechanism, mech2: OldMechanism
-) -> tuple[dict[str, str], list[str]]:
+def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], list[str]]:
     """Generate dictionary for renaming species names from one mechanism to another.
 
     :param mech1: Mechanism with original names
@@ -538,11 +536,8 @@ def rename_dict(
     match_cols = [Species.amchi, Species.spin, Species.charge]
 
     # Read in species and names
-    spc1_df = species(mech1)
-    spc1_df = spc1_df.rename(col_.to_orig(Species.name))
-
-    spc2_df = species(mech2)
-    spc2_df = spc2_df.select([Species.name, *match_cols])
+    spc1_df = mech1.species.rename(col_.to_orig(Species.name))
+    spc2_df = mech2.species.select([Species.name, *match_cols])
 
     # Get names from first mechanism that are included/excluded in second
     incl_spc_df = spc1_df.join(spc2_df, on=match_cols, how="inner")
@@ -550,7 +545,7 @@ def rename_dict(
 
     orig_col = col_.orig(Species.name)
     name_dct = df_.lookup_dict(incl_spc_df, orig_col, Species.name)
-    missing_names = excl_spc_df[orig_col].to_list()
+    missing_names = excl_spc_df.get_column(orig_col).to_list()
     return name_dct, missing_names
 
 
@@ -641,12 +636,12 @@ def apply_network_function(
 
 # transformations
 def rename(
-    mech: OldMechanism,
+    mech: Mechanism,
     names: Sequence[str] | Mapping[str, str],
     new_names: Sequence[str] | None = None,
     drop_orig: bool = True,
     drop_missing: bool = False,
-) -> OldMechanism:
+) -> Mechanism:
     """Rename species in mechanism.
 
     :param mech: Mechanism
@@ -656,16 +651,18 @@ def rename(
     :param drop_missing: Whether to drop missing species or keep them
     :return: Mechanism with updated species names
     """
+    mech = mech.model_copy()
+
     if drop_missing:
         mech = with_species(mech, list(names), strict=drop_missing)
 
-    spc_df = spec_table.rename(
-        species(mech), names=names, new_names=new_names, drop_orig=drop_orig
+    mech.species = spec_table.rename(
+        mech.species, names=names, new_names=new_names, drop_orig=drop_orig
     )
-    rxn_df = reac_table.rename(
-        reactions(mech), names=names, new_names=new_names, drop_orig=drop_orig
+    mech.reactions = reac_table.rename(
+        mech.reactions, names=names, new_names=new_names, drop_orig=drop_orig
     )
-    return update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
+    return mech
 
 
 def remove_all_reactions(mech: OldMechanism) -> OldMechanism:
@@ -745,8 +742,8 @@ def drop_self_reactions(mech: OldMechanism) -> OldMechanism:
 
 
 def with_species(
-    mech: OldMechanism, spc_names: Sequence[str] = (), strict: bool = False
-) -> OldMechanism:
+    mech: Mechanism, spc_names: Sequence[str] = (), strict: bool = False
+) -> Mechanism:
     """Extract submechanism including species names from list.
 
     :param mech: Mechanism
@@ -759,7 +756,7 @@ def with_species(
     )
 
 
-def without_species(mech: OldMechanism, spc_names: Sequence[str] = ()) -> OldMechanism:
+def without_species(mech: Mechanism, spc_names: Sequence[str] = ()) -> Mechanism:
     """Extract submechanism excluding species names from list.
 
     :param mech: Mechanism
@@ -770,11 +767,11 @@ def without_species(mech: OldMechanism, spc_names: Sequence[str] = ()) -> OldMec
 
 
 def _with_or_without_species(
-    mech: OldMechanism,
+    mech: Mechanism,
     spc_names: Sequence[str] = (),
     without: bool = False,
     strict: bool = False,
-) -> OldMechanism:
+) -> Mechanism:
     """Extract submechanism containing or excluding species names from list.
 
     :param mech: Mechanism
@@ -792,29 +789,21 @@ def _with_or_without_species(
     expr = expr.all() if strict else expr.any()
     expr = expr.not_() if without else expr
 
-    rxn_df = reactions(mech)
-
-    rxn_df = rxn_df.filter(expr)
-    return without_unused_species(
-        from_data(
-            rxn_inp=rxn_df,
-            spc_inp=species(mech),
-            thermo_temps=thermo_temperatures(mech),
-            rate_units=rate_units(mech),
-        )
-    )
+    mech = mech.model_copy()
+    mech.reactions = mech.reactions.filter(expr)
+    return without_unused_species(mech)
 
 
-def without_unused_species(mech: OldMechanism) -> OldMechanism:
+def without_unused_species(mech: Mechanism) -> Mechanism:
     """Remove unused species from mechanism.
 
     :param mech: Mechanism
     :return: Mechanism without unused species
     """
-    spc_df = species(mech)
+    mech = mech.model_copy()
     used_names = species_names(mech, rxn_only=True)
-    spc_df = spc_df.filter(polars.col(Species.name).is_in(used_names))
-    return set_species(mech, spc_df)
+    mech.species = mech.species.filter(polars.col(Species.name).is_in(used_names))
+    return mech
 
 
 def with_rates(mech: OldMechanism) -> OldMechanism:
