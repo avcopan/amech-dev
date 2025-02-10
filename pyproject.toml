@@ -4,7 +4,7 @@ description = "Add a short description here"
 name = "automech"
 requires-python = ">= 3.11"
 version = "0.1.0"
-dependencies = ["pip", "pylint", "pytest", "black", "ruff", "mypy", "sphinx", "myst-parser", "sphinx-book-theme", "sphinx-autodoc-typehints", "pytest-xdist[psutil]", "pre-commit"]
+dependencies = ["pip", "pylint", "pytest", "black", "ruff", "mypy", "sphinx", "myst-parser", "sphinx-book-theme", "sphinx-autodoc-typehints", "pytest-xdist[psutil]", "pre-commit", "mypy-ipython>=20.8.0,<21"]
 
 [build-system]
 build-backend = "hatchling.build"
@@ -58,6 +58,7 @@ python-igraph = "*"
 pydantic = "*"
 automech-toolbox = "*"
 parallel = "*"
+pandas-stubs = ">=2.2.3.241126,<3"
 
 [tool.pixi.system-requirements]
 linux="3.10"

@@ -3,12 +3,13 @@
 import itertools
 from collections.abc import Mapping, Sequence
 
+import autochem
 import automol
 import more_itertools as mit
 import polars
 
-from . import data, schema, spec_table
-from .schema import Reaction, ReactionRateOld, Species
+from . import schema, spec_table
+from .schema import Reaction, ReactionRate, ReactionRateOld, Species
 from .util import col_, df_
 
 m_col_ = col_
@@ -20,27 +21,19 @@ ReactionId = tuple[*schema.types(Reaction, ID_COLS, py=True).values()]
 
 
 # properties
-def reaction_ids(rxn_df: polars.DataFrame, cross_sort: bool = True) -> list[ReactionId]:
+def reaction_ids(
+    rxn_df: polars.DataFrame, cross_sort: bool | str = True
+) -> list[ReactionId]:
     """Get IDs for a reactions DataFrame.
 
     :param rxn_df: Species DataFrame
     :param cross_sort: Whether to make keys direction-agnostic by cross-sorting reagents
+        Can be Boolean column indicating where to cross-sort.
     :return: Reaction IDs
     """
     rxn_id_col_ = ID_COLS
     rxn_df = df_.with_sorted_columns(rxn_df, col_=rxn_id_col_, cross_sort=cross_sort)
     return rxn_df.select(rxn_id_col_).rows()
-
-
-def has_colliders(rxn_df: polars.DataFrame) -> bool:
-    """Determine whether a reactions DataFrame has colliders.
-
-    :param rxn_df: Reactions DataFrame
-    :return: `True` if it does, `False` if not
-    """
-    return ReactionRateOld.colliders in rxn_df and df_.has_values(
-        rxn_df.get_column(ReactionRateOld.colliders).struct.unnest()
-    )
 
 
 def has_rates(rxn_df: polars.DataFrame) -> bool:
@@ -49,8 +42,8 @@ def has_rates(rxn_df: polars.DataFrame) -> bool:
     :param rxn_df: Reactions DataFrame
     :return: `True` if it does, `False` if not
     """
-    return ReactionRateOld.rate in rxn_df and df_.has_values(
-        rxn_df.get_column(ReactionRateOld.rate).struct.unnest()
+    return ReactionRate.rate in rxn_df and df_.has_values(
+        rxn_df.get_column(ReactionRate.rate).struct.unnest()
     )
 
 
@@ -107,9 +100,7 @@ def update(rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame) -> polars.Dat
 
 
 def left_update(
-    rxn_df: polars.DataFrame,
-    src_rxn_df: polars.DataFrame,
-    drop_orig: bool = True,
+    rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame, drop_orig: bool = True
 ) -> polars.DataFrame:
     """Left-update reaction data by reaction key.
 
@@ -156,7 +147,7 @@ def add_missing_reactions_by_id(
     # Append missing reactions to reactions DataFrame
     miss_rxn_ids = [s for i, s in enumerate(rxn_ids) if i not in rxn_df[idx_col]]
     miss_rxn_df = polars.DataFrame(miss_rxn_ids, schema=id_cols0, orient="row")
-    miss_rxn_df, *_ = schema.reaction_table(miss_rxn_df)
+    miss_rxn_df, *_ = schema.reaction_table_with_errors(miss_rxn_df)
     return polars.concat([rxn_df.drop(idx_col), miss_rxn_df], how="diagonal_relaxed")
 
 
@@ -181,7 +172,7 @@ def with_key(
     rxn_df: polars.DataFrame,
     col: str = "key",
     spc_df: polars.DataFrame | None = None,
-    cross_sort: bool = True,
+    cross_sort: bool | str = True,
     stereo: bool = True,
 ) -> polars.DataFrame:
     """Add a key for identifying unique reactions to this DataFrame.
@@ -195,6 +186,7 @@ def with_key(
     :param col: Column name
     :param spc_df: Optional species DataFrame, for using unique species IDs
     :param cross_sort: Whether to sort the reaction direction
+        Can be Boolean column indicating where to cross-sort.
     :param stereo: Whether to include stereochemistry
     :return: A reactions DataFrame with this key as a new column
     """
@@ -232,11 +224,25 @@ def with_key(
     return rxn_df.drop(rct_col, prd_col)
 
 
+def with_duplicate_column(rxn_df: polars.DataFrame, col: str) -> polars.DataFrame:
+    """Generate a column indicating which reactions are duplicate.
+
+    :param rxn_df: Reactions DataFrame
+    :param col: Duplicate column
+    :return: Reactions DataFrame
+    """
+    tmp_col = col_.temp()
+    cross_sort = ReactionRate.reversible if ReactionRate.reversible in rxn_df else True
+    rxn_df = with_key(rxn_df, col=tmp_col, cross_sort=cross_sort)
+    rxn_df = rxn_df.with_columns(polars.col(tmp_col).is_duplicated().alias(col))
+    return rxn_df.drop(tmp_col)
+
+
 def with_sorted_reagents(
     rxn_df: polars,
     col_: Sequence[str] = (Reaction.reactants, Reaction.products),
     col_out_: Sequence[str] | None = None,
-    cross_sort: bool = True,
+    cross_sort: bool | str = True,
 ) -> polars.DataFrame:
     """Generate sorted reagents columns.
 
@@ -244,6 +250,7 @@ def with_sorted_reagents(
     :param col_: Reactant and product column(s)
     :param col_out_: Output reactant and product column(s), if different from input
     :param cross_sort: Whether to sort the reaction direction
+        Can be Boolean column indicating where to cross-sort.
     :return: Reactions DataFrame
     """
     col_out_ = col_ if col_out_ is None else col_out_
@@ -254,27 +261,55 @@ def with_sorted_reagents(
     )
 
 
+def with_rate_objects(
+    rxn_df: polars.DataFrame, col: str, fill: bool = False
+) -> polars.DataFrame:
+    """Get reaction rate objects as a list.
+
+    :param rxn_df: Reaction DataFrame
+    :param col: Column
+    :param fill: Whether to fill missing rates with dummy values
+    :return: Rate objects
+    """
+    if fill:
+        rxn_df = with_rates(rxn_df)
+
+    cols = [
+        Reaction.reactants,
+        Reaction.products,
+        ReactionRate.reversible,
+        ReactionRate.rate,
+    ]
+    return rxn_df.with_columns(
+        polars.struct(cols)
+        .map_elements(autochem.rate.Rate.model_validate, return_dtype=polars.Object)
+        .alias(col)
+    )
+
+
 def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
-    """Add placeholder rate data to this DataFrame, if missing.
+    """Add placeholder rates to this DataFrame, if missing.
 
     This is mainly needed for ChemKin mechanism writing.
 
     :param rxn_df: Reaction DataFrame
     :return: Reaction DataFrame
     """
-    rate0 = data.rate.SimpleRate().model_dump()
-    coll0 = {"M": None}
+    rev0 = True
+    rate0 = autochem.rate.ArrheniusRateConstant().model_dump()
 
-    if ReactionRateOld.rate not in rxn_df:
-        rxn_df = rxn_df.with_columns(polars.lit(rate0).alias(ReactionRateOld.rate))
+    if ReactionRate.reversible not in rxn_df:
+        rxn_df = rxn_df.with_columns(polars.lit(rev0).alias(ReactionRate.reversible))
 
-    if ReactionRateOld.colliders not in rxn_df:
-        rxn_df = rxn_df.with_columns(polars.lit(coll0).alias(ReactionRateOld.colliders))
+    if ReactionRate.rate not in rxn_df:
+        rxn_df = rxn_df.with_columns(polars.lit(rate0).alias(ReactionRate.rate))
 
-    rate0 = polars.lit(rate0, dtype=df_.dtype(rxn_df, ReactionRateOld.rate))
-    coll0 = polars.lit(coll0, dtype=df_.dtype(rxn_df, ReactionRateOld.colliders))
-    rxn_df = rxn_df.with_columns(polars.col(ReactionRateOld.rate).fill_null(rate0))
-    rxn_df = rxn_df.with_columns(polars.col(ReactionRateOld.colliders).fill_null(coll0))
+    rev0_lit = polars.lit(rev0, dtype=df_.dtype(rxn_df, ReactionRate.reversible))
+    rate0_lit = polars.lit(rate0, dtype=df_.dtype(rxn_df, ReactionRate.rate))
+    rxn_df = rxn_df.with_columns(
+        polars.col(ReactionRate.reversible).fill_null(rev0_lit)
+    )
+    rxn_df = rxn_df.with_columns(polars.col(ReactionRate.rate).fill_null(rate0_lit))
     return rxn_df
 
 
@@ -412,12 +447,13 @@ def select_pes(
 
 # helpers
 def normalize_reaction_ids(
-    rxn_ids: Sequence[ReactionId], cross_sort: bool = True
+    rxn_ids: Sequence[ReactionId], cross_sort: bool | str = True
 ) -> list[ReactionId]:
     """Normalize a list of reaction IDs.
 
     :param rxn_ids: Reaction IDs
     :param cross_sort: Whether to make keys direction-agnostic by cross-sorting reagents
+        Can be Boolean column indicating where to cross-sort.
     :return: Reaction IDs
     """
     return reaction_ids(

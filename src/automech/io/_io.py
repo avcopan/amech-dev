@@ -3,18 +3,17 @@
 import os
 from pathlib import Path
 
-from .. import _mech
 from .._mech import Mechanism
 
 
-def write(mech: Mechanism, out: str | Path | None = None) -> str:
+def write(mech: Mechanism, out: str | Path | None = None) -> str | None:
     """Write a mechanism to JSON format.
 
     :param mech: A mechanism
     :param path: The path to write to (either directory or reactions file)
     :param prefix: File name prefix, used if path is a directory
     """
-    mech_str = _mech.string(mech)
+    mech_str = mech.model_dump_json()
     if out is None:
         return mech_str
 
@@ -31,5 +30,4 @@ def read(inp: str | Path | None = None) -> Mechanism:
     :return: The mechanism
     """
     inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
-    mech = _mech.from_string(inp)
-    return mech
+    return Mechanism.model_validate_json(inp)

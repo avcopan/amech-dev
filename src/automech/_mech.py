@@ -10,6 +10,7 @@ from collections.abc import Callable, Collection, Mapping, Sequence
 import automol
 import more_itertools as mit
 import polars
+import pydantic
 
 from . import data, reac_table, schema, spec_table
 from . import net as net_
@@ -23,10 +24,19 @@ from .schema import (
     SpeciesStereo,
 )
 from .util import col_, df_
+from .util.type_ import DataFrame_
+
+
+class Mechanism(pydantic.BaseModel):
+    """Chemical kinetic mechanism."""
+
+    reactions: DataFrame_
+    species: DataFrame_
+    thermo_temps: tuple[float, float, float] | None = None
 
 
 @dataclasses.dataclass
-class Mechanism:
+class OldMechanism:
     """Chemical kinetic mechanism."""
 
     reactions: polars.DataFrame
@@ -51,7 +61,9 @@ class Mechanism:
             self.species = polars.DataFrame(self.species, infer_schema_length=None)
 
         self.species = schema.species_table(self.species)
-        self.reactions, _ = schema.reaction_table(self.reactions, spc_df=self.species)
+        self.reactions, _ = schema.reaction_table_with_errors(
+            self.reactions, spc_df=self.species
+        )
 
     def __repr__(self):
         rxn_df_rep = textwrap.indent(repr(self.reactions), "  ")
@@ -83,7 +95,7 @@ def from_data(
     rxn_models: Sequence[Model] = (),
     spc_models: Sequence[Model] = (),
     fail_on_error: bool = True,
-) -> Mechanism:
+) -> OldMechanism:
     """Construct mechanism object from data.
 
     :param rxn_inp: Reactions table, as CSV file path or DataFrame
@@ -107,10 +119,10 @@ def from_data(
     spc_df = spc_inp if isinstance(spc_inp, polars.DataFrame) else df_.from_csv(spc_inp)
     rxn_df = rxn_inp if isinstance(rxn_inp, polars.DataFrame) else df_.from_csv(rxn_inp)
     spc_df = schema.species_table(spc_df, model_=spc_models)
-    rxn_df, _ = schema.reaction_table(
+    rxn_df, _ = schema.reaction_table_with_errors(
         rxn_df, model_=rxn_models, spc_df=spc_df, fail_on_error=fail_on_error
     )
-    mech = Mechanism(
+    mech = OldMechanism(
         reactions=rxn_df,
         species=spc_df,
         thermo_temps=thermo_temps,
@@ -119,7 +131,7 @@ def from_data(
     return mech
 
 
-def from_network(net: net_.Network) -> Mechanism:
+def from_network(net: net_.Network) -> OldMechanism:
     """Generate mechanism from reaction network.
 
     :param net: Reaction network
@@ -214,12 +226,12 @@ def from_smiles(
     dt = schema.reaction_types([Reaction.reactants, Reaction.products])
     rxn_df = polars.DataFrame(data=data_lst, schema=dt)
 
-    mech = from_data(rxn_inp=rxn_df, spc_inp=spc_df)
+    mech = Mechanism(reactions=rxn_df, species=spc_df)
     return mech if src_mech is None else left_update(mech, src_mech)
 
 
 # getters
-def species(mech: Mechanism) -> polars.DataFrame:
+def species(mech: OldMechanism) -> polars.DataFrame:
     """Get species DataFrame for mechanism.
 
     :param mech: Mechanism
@@ -231,7 +243,7 @@ def species(mech: Mechanism) -> polars.DataFrame:
 species_ = species
 
 
-def reactions(mech: Mechanism) -> polars.DataFrame:
+def reactions(mech: OldMechanism) -> polars.DataFrame:
     """Get reactions DataFrame for mechanism.
 
     :param mech: Mechanism
@@ -243,7 +255,7 @@ def reactions(mech: Mechanism) -> polars.DataFrame:
 reactions_ = reactions
 
 
-def thermo_temperatures(mech: Mechanism) -> tuple[float, float, float] | None:
+def thermo_temperatures(mech: OldMechanism) -> tuple[float, float, float] | None:
     """Get thermo temperatures for mechanism.
 
     :param mech: Mechanism
@@ -255,7 +267,7 @@ def thermo_temperatures(mech: Mechanism) -> tuple[float, float, float] | None:
 thermo_temperatures_ = thermo_temperatures
 
 
-def rate_units(mech_: Mechanism | Sequence[Mechanism]) -> tuple[str, str] | None:
+def rate_units(mech_: OldMechanism | Sequence[OldMechanism]) -> tuple[str, str] | None:
     """Get rate units for mechanism(s).
 
     If multiple mechanisms are passed in, this gets the first non-null units.
@@ -272,7 +284,7 @@ rate_units_ = rate_units
 
 
 # setters
-def set_species(mech: Mechanism, spc_df: polars.DataFrame) -> Mechanism:
+def set_species(mech: OldMechanism, spc_df: polars.DataFrame) -> OldMechanism:
     """Set species DataFrame for mechanism.
 
     :param mech: Mechanism
@@ -287,7 +299,7 @@ def set_species(mech: Mechanism, spc_df: polars.DataFrame) -> Mechanism:
     )
 
 
-def set_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
+def set_reactions(mech: OldMechanism, rxn_df: polars.DataFrame) -> OldMechanism:
     """Set reactions DataFrame for mechanism.
 
     :param mech: Mechanism
@@ -303,8 +315,8 @@ def set_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
 
 
 def set_thermo_temperatures(
-    mech: Mechanism, temps: tuple[float, float, float] | None
-) -> Mechanism:
+    mech: OldMechanism, temps: tuple[float, float, float] | None
+) -> OldMechanism:
     """Set thermo temperatures for mechanism.
 
     :param mech: Mechanism
@@ -320,8 +332,8 @@ def set_thermo_temperatures(
 
 
 def set_rate_units(
-    mech: Mechanism, units: tuple[str, str] | None, scale_rates: bool = True
-) -> Mechanism:
+    mech: OldMechanism, units: tuple[str, str] | None, scale_rates: bool = True
+) -> OldMechanism:
     """Set rate units for mechanism.
 
     :param mech: Mechanism
@@ -357,12 +369,12 @@ def set_rate_units(
 
 
 def update_data(
-    mech: Mechanism,
+    mech: OldMechanism,
     rxn_df: polars.DataFrame | None = None,
     spc_df: polars.DataFrame | None = None,
     thermo_temps: tuple[float, float, float] | None = None,
     rate_units: tuple[str, str] | None = None,
-) -> Mechanism:
+) -> OldMechanism:
     """Update mechanism data.
 
     :param rxn_df: Reactions DataFrame
@@ -382,7 +394,7 @@ def update_data(
 
 
 # properties
-def species_count(mech: Mechanism) -> int:
+def species_count(mech: OldMechanism) -> int:
     """Get number of species in mechanism.
 
     :param mech: Mechanism
@@ -391,7 +403,7 @@ def species_count(mech: Mechanism) -> int:
     return df_.count(species(mech))
 
 
-def reaction_count(mech: Mechanism) -> int:
+def reaction_count(mech: OldMechanism) -> int:
     """Get number of reactions in mechanism.
 
     :param mech: Mechanism
@@ -400,7 +412,7 @@ def reaction_count(mech: Mechanism) -> int:
     return df_.count(reactions(mech))
 
 
-def reagents(mech: Mechanism) -> list[list[str]]:
+def reagents(mech: OldMechanism) -> list[list[str]]:
     """Get sets of reagents in mechanism.
 
     :param mech: Mechanism
@@ -410,7 +422,7 @@ def reagents(mech: Mechanism) -> list[list[str]]:
 
 
 def species_names(
-    mech: Mechanism,
+    mech: OldMechanism,
     rxn_only: bool = False,
     formulas: Sequence[str] | None = None,
     exclude_formulas: Sequence[str] = (),
@@ -460,7 +472,7 @@ def species_names(
     return spc_names
 
 
-def reaction_reactants(mech: Mechanism) -> list[list[str]]:
+def reaction_reactants(mech: OldMechanism) -> list[list[str]]:
     """Get reactants of reactions in mechanism.
 
     :param mech: Mechanism
@@ -470,7 +482,7 @@ def reaction_reactants(mech: Mechanism) -> list[list[str]]:
     return rxn_df[Reaction.reactants].to_list()
 
 
-def reaction_products(mech: Mechanism) -> list[list[str]]:
+def reaction_products(mech: OldMechanism) -> list[list[str]]:
     """Get products of reactions in mechanism.
 
     :param mech: Mechanism
@@ -481,7 +493,7 @@ def reaction_products(mech: Mechanism) -> list[list[str]]:
 
 
 def reaction_reactants_and_products(
-    mech: Mechanism,
+    mech: OldMechanism,
 ) -> list[tuple[list[str], list[str]]]:
     """Get reactants and products of reactions in mechanism.
 
@@ -492,7 +504,7 @@ def reaction_reactants_and_products(
     return rxn_df[[Reaction.reactants, Reaction.products]].rows()
 
 
-def reaction_equations(mech: Mechanism) -> list[str]:
+def reaction_equations(mech: OldMechanism) -> list[str]:
     """Get equations of reactions in mechanism.
 
     :param mech: Mechanism
@@ -502,7 +514,7 @@ def reaction_equations(mech: Mechanism) -> list[str]:
     return list(itertools.starmap(data.reac.write_chemkin_equation, rps))
 
 
-def reaction_species_names(mech: Mechanism) -> list[str]:
+def reaction_species_names(mech: OldMechanism) -> list[str]:
     """Get names of all species that participate in reactions.
 
     :param mech: Mechanism
@@ -513,7 +525,9 @@ def reaction_species_names(mech: Mechanism) -> list[str]:
     return list(mit.unique_everseen(itertools.chain(*rxn_names)))
 
 
-def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], list[str]]:
+def rename_dict(
+    mech1: OldMechanism, mech2: OldMechanism
+) -> tuple[dict[str, str], list[str]]:
     """Generate dictionary for renaming species names from one mechanism to another.
 
     :param mech1: Mechanism with original names
@@ -540,7 +554,7 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
     return name_dct, missing_names
 
 
-def network(mech: Mechanism) -> net_.Network:
+def network(mech: OldMechanism) -> net_.Network:
     """Generate reaction network representation of mechanism.
 
     :param mech: Mechanism
@@ -600,8 +614,8 @@ def network(mech: Mechanism) -> net_.Network:
 
 
 def apply_network_function(
-    mech: Mechanism, func: Callable, *args, **kwargs
-) -> Mechanism:
+    mech: OldMechanism, func: Callable, *args, **kwargs
+) -> OldMechanism:
     """Apply network function to mechanism.
 
     :param mech: Mechanism
@@ -627,12 +641,12 @@ def apply_network_function(
 
 # transformations
 def rename(
-    mech: Mechanism,
+    mech: OldMechanism,
     names: Sequence[str] | Mapping[str, str],
     new_names: Sequence[str] | None = None,
     drop_orig: bool = True,
     drop_missing: bool = False,
-) -> Mechanism:
+) -> OldMechanism:
     """Rename species in mechanism.
 
     :param mech: Mechanism
@@ -654,7 +668,7 @@ def rename(
     return update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
 
 
-def remove_all_reactions(mech: Mechanism) -> Mechanism:
+def remove_all_reactions(mech: OldMechanism) -> OldMechanism:
     """Clear reactions from mechanism.
 
     :param mech: Mechanism
@@ -663,7 +677,7 @@ def remove_all_reactions(mech: Mechanism) -> Mechanism:
     return set_reactions(mech, reactions(mech).clear())
 
 
-def add_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
+def add_reactions(mech: OldMechanism, rxn_df: polars.DataFrame) -> OldMechanism:
     """Add reactions from DataFrame to mechanism.
 
     :param mech: Mechanism
@@ -675,8 +689,10 @@ def add_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
 
 
 def select_pes(
-    mech: Mechanism, formula_: str | dict | Sequence[str | dict], exclude: bool = False
-) -> Mechanism:
+    mech: OldMechanism,
+    formula_: str | dict | Sequence[str | dict],
+    exclude: bool = False,
+) -> OldMechanism:
     """Select (or exclude) PES by formula(s).
 
     :param mech: Mechanism
@@ -689,8 +705,8 @@ def select_pes(
 
 
 def neighborhood(
-    mech: Mechanism, species_names: Sequence[str], radius: int = 1
-) -> Mechanism:
+    mech: OldMechanism, species_names: Sequence[str], radius: int = 1
+) -> OldMechanism:
     """Determine neighborhood of set of species.
 
     :param mech: Mechanism
@@ -704,7 +720,7 @@ def neighborhood(
 
 
 # drop/add reactions
-def drop_duplicate_reactions(mech: Mechanism) -> Mechanism:
+def drop_duplicate_reactions(mech: OldMechanism) -> OldMechanism:
     """Drop duplicate reactions from mechanism.
 
     :param mech: Mechanism
@@ -718,7 +734,7 @@ def drop_duplicate_reactions(mech: Mechanism) -> Mechanism:
     return set_reactions(mech, rxn_df)
 
 
-def drop_self_reactions(mech: Mechanism) -> Mechanism:
+def drop_self_reactions(mech: OldMechanism) -> OldMechanism:
     """Drop self-reactions from mechanism.
 
     :param mech: Mechanism
@@ -729,8 +745,8 @@ def drop_self_reactions(mech: Mechanism) -> Mechanism:
 
 
 def with_species(
-    mech: Mechanism, spc_names: Sequence[str] = (), strict: bool = False
-) -> Mechanism:
+    mech: OldMechanism, spc_names: Sequence[str] = (), strict: bool = False
+) -> OldMechanism:
     """Extract submechanism including species names from list.
 
     :param mech: Mechanism
@@ -743,7 +759,7 @@ def with_species(
     )
 
 
-def without_species(mech: Mechanism, spc_names: Sequence[str] = ()) -> Mechanism:
+def without_species(mech: OldMechanism, spc_names: Sequence[str] = ()) -> OldMechanism:
     """Extract submechanism excluding species names from list.
 
     :param mech: Mechanism
@@ -754,11 +770,11 @@ def without_species(mech: Mechanism, spc_names: Sequence[str] = ()) -> Mechanism
 
 
 def _with_or_without_species(
-    mech: Mechanism,
+    mech: OldMechanism,
     spc_names: Sequence[str] = (),
     without: bool = False,
     strict: bool = False,
-) -> Mechanism:
+) -> OldMechanism:
     """Extract submechanism containing or excluding species names from list.
 
     :param mech: Mechanism
@@ -789,7 +805,7 @@ def _with_or_without_species(
     )
 
 
-def without_unused_species(mech: Mechanism) -> Mechanism:
+def without_unused_species(mech: OldMechanism) -> OldMechanism:
     """Remove unused species from mechanism.
 
     :param mech: Mechanism
@@ -801,7 +817,7 @@ def without_unused_species(mech: Mechanism) -> Mechanism:
     return set_species(mech, spc_df)
 
 
-def with_rates(mech: Mechanism) -> Mechanism:
+def with_rates(mech: OldMechanism) -> OldMechanism:
     """Add dummy placeholder rates to this Mechanism, if missing.
 
     This is mainly needed for ChemKin mechanism writing.
@@ -809,13 +825,14 @@ def with_rates(mech: Mechanism) -> Mechanism:
     :param rxn_df: Mechanism
     :return: Mechanism with dummy rates, if missing
     """
-    rxn_df = reactions(mech)
-    return set_reactions(mech, reac_table.with_rates(rxn_df))
+    mech = mech.model_copy()
+    mech.reactions = reac_table.with_rates(mech.reactions)
+    return mech
 
 
 def with_key(
-    mech: Mechanism, col: str = "key", stereo: bool = True
-) -> tuple[Mechanism, Mechanism]:
+    mech: OldMechanism, col: str = "key", stereo: bool = True
+) -> tuple[OldMechanism, OldMechanism]:
     """Add match key column for species and reactions.
 
     Currently only accepts a single species key, but could be generalized to accept
@@ -833,11 +850,11 @@ def with_key(
 
 
 def expand_stereo(
-    mech: Mechanism,
+    mech: OldMechanism,
     enant: bool = True,
     strained: bool = False,
     distinct_ts: bool = True,
-) -> tuple[Mechanism, Mechanism]:
+) -> tuple[OldMechanism, OldMechanism]:
     """Expand stereochemistry for mechanism.
 
     :param mech: Mechanism
@@ -982,7 +999,7 @@ def _expand_species_stereo(
 
 
 # binary operations
-def common_rate_units_all(mechs: Sequence[Mechanism]) -> list[Mechanism]:
+def common_rate_units_all(mechs: Sequence[OldMechanism]) -> list[OldMechanism]:
     """Convert mechanisms to common rate units.
 
     :param mechs: Mechanisms
@@ -992,7 +1009,7 @@ def common_rate_units_all(mechs: Sequence[Mechanism]) -> list[Mechanism]:
     return [set_rate_units(m, units=units) for m in mechs]
 
 
-def combine_all(mechs: Sequence[Mechanism]) -> Mechanism:
+def combine_all(mechs: Sequence[OldMechanism]) -> OldMechanism:
     """Combine mechanisms into one.
 
     :param mechs: Mechanisms
@@ -1003,8 +1020,8 @@ def combine_all(mechs: Sequence[Mechanism]) -> Mechanism:
 
 
 def intersection(
-    mech1: Mechanism, mech2: Mechanism, right: bool = False, stereo: bool = True
-) -> tuple[Mechanism, Mechanism]:
+    mech1: OldMechanism, mech2: OldMechanism, right: bool = False, stereo: bool = True
+) -> tuple[OldMechanism, OldMechanism]:
     """Determine intersection between one mechanism and another.
 
     :param mech1: First mechanism
@@ -1022,12 +1039,12 @@ def intersection(
 
 
 def difference(
-    mech1: Mechanism,
-    mech2: Mechanism,
+    mech1: OldMechanism,
+    mech2: OldMechanism,
     right: bool = False,
     col: str = "intersection",
     stereo: bool = True,
-) -> tuple[Mechanism, Mechanism]:
+) -> tuple[OldMechanism, OldMechanism]:
     """Determine difference between one mechanism and another.
 
     Includes shared species as needed to balance reactions. These can be identified from
@@ -1052,7 +1069,9 @@ def difference(
     return update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
 
 
-def update(mech1: Mechanism, mech2: Mechanism, keep_left: bool = False) -> Mechanism:
+def update(
+    mech1: OldMechanism, mech2: OldMechanism, keep_left: bool = False
+) -> OldMechanism:
     """Update one mechanism with species and reactions from another.
 
     Any overlapping species or reactions will be replaced with those of the second
@@ -1098,9 +1117,6 @@ def left_update(
     :param drop_orig: Whether to drop the original column values
     :return: Mechanism
     """
-    # Use the rate units of the second mechanism
-    mech1, mech2 = common_rate_units_all((mech1, mech2))
-
     spc_df = species(mech1)
     rxn_df = reactions(mech1)
 
@@ -1111,12 +1127,17 @@ def left_update(
     rxn_df = reac_table.rename(rxn_df, spc_df[ncol0], spc_df[ncol], drop_orig=drop_orig)
     spc_df = spc_df.drop(ncol)
     rxn_df = reac_table.left_update(rxn_df, reactions(mech2), drop_orig=drop_orig)
-    return update_data(mech1, rxn_df=rxn_df, spc_df=spc_df)
+    return Mechanism.model_validate(
+        {**mech1.model_dump(), "reactions": rxn_df, "species": spc_df}
+    )
 
 
 def with_intersection_columns(
-    mech1: Mechanism, mech2: Mechanism, col: str = "intersection", stereo: bool = True
-) -> tuple[Mechanism, Mechanism]:
+    mech1: OldMechanism,
+    mech2: OldMechanism,
+    col: str = "intersection",
+    stereo: bool = True,
+) -> tuple[OldMechanism, OldMechanism]:
     """Add columns to Mechanism pair indicating their intersection.
 
     :param mech1: First mechanism
@@ -1152,7 +1173,9 @@ def with_intersection_columns(
 
 
 # parent
-def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechanism:
+def expand_parent_stereo(
+    par_mech: OldMechanism, exp_sub_mech: OldMechanism
+) -> OldMechanism:
     """Apply stereoexpansion of submechanism to parent mechanism.
 
     Produces equivalent of parent mechanism, containing distinct
@@ -1239,14 +1262,14 @@ ReagentValue_ = str | Sequence[str] | None
 
 
 def enumerate_reactions(
-    mech: Mechanism,
+    mech: OldMechanism,
     smarts: str,
     rcts_: Sequence[ReagentValue_] | None = None,
     spc_col_: str | Sequence[str] = Species.name,
-    src_mech: Mechanism | None = None,
+    src_mech: OldMechanism | None = None,
     repeat: int = 1,
     drop_self_rxns: bool = True,
-) -> Mechanism:
+) -> OldMechanism:
     """Enumerate reactions for mechanism based on SMARTS reaction template.
 
     Reactants are listed by position in the SMARTS template. If a sequence of reactants
@@ -1274,12 +1297,12 @@ def enumerate_reactions(
 
 
 def _enumerate_reactions(
-    mech: Mechanism,
+    mech: OldMechanism,
     smarts: str,
     rcts_: Sequence[ReagentValue_] | None = None,
     spc_col_: str | Sequence[str] = Species.name,
-    src_mech: Mechanism | None = None,
-) -> Mechanism:
+    src_mech: OldMechanism | None = None,
+) -> OldMechanism:
     """Enumerate reactions for mechanism based on SMARTS reaction template.
 
     Reactants are listed by position in the SMARTS template. If a sequence of reactants
@@ -1338,7 +1361,7 @@ def _enumerate_reactions(
 
 
 # sorting
-def with_sort_data(mech: Mechanism) -> Mechanism:
+def with_sort_data(mech: OldMechanism) -> OldMechanism:
     """Add columns to sort mechanism by species and reactions.
 
     :param mech: Mechanism
@@ -1384,7 +1407,7 @@ def with_sort_data(mech: Mechanism) -> Mechanism:
 
 
 # comparison
-def are_equivalent(mech1: Mechanism, mech2: Mechanism) -> bool:
+def are_equivalent(mech1: OldMechanism, mech2: OldMechanism) -> bool:
     """Determine whether two mechanisms are equivalent.
 
     (Currently too strict -- need to figure out how to handle nested float comparisons
@@ -1405,7 +1428,7 @@ def are_equivalent(mech1: Mechanism, mech2: Mechanism) -> bool:
 
 
 # read/write
-def string(mech: Mechanism) -> str:
+def string(mech: OldMechanism) -> str:
     """Write mechanism to JSON string.
 
     :param mech: Mechanism
@@ -1414,19 +1437,19 @@ def string(mech: Mechanism) -> str:
     return json.dumps(dict(mech))
 
 
-def from_string(mech_str: str) -> Mechanism:
+def from_string(mech_str: str) -> OldMechanism:
     """Read mechanism from JSON string.
 
     :param mech_str: Mechanism JSON string
     :return: Mechanism
     """
     mech_dct = json.loads(mech_str)
-    return Mechanism(**mech_dct)
+    return OldMechanism(**mech_dct)
 
 
 # display
 def display(
-    mech: Mechanism,
+    mech: OldMechanism,
     stereo: bool = True,
     color_subpes: bool = True,
     species_centered: bool = False,
@@ -1462,7 +1485,7 @@ def display(
 
 
 def display_species(
-    mech: Mechanism,
+    mech: OldMechanism,
     spc_vals_: Sequence[str] | None = None,
     spc_key_: str | Sequence[str] = Species.name,
     stereo: bool = True,
@@ -1500,7 +1523,7 @@ def display_species(
 
 
 def display_reactions(
-    mech: Mechanism,
+    mech: OldMechanism,
     eqs: Collection | None = None,
     stereo: bool = True,
     keys: Sequence[str] = (),

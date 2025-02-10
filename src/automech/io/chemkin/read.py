@@ -2,25 +2,20 @@
 
 import itertools
 import re
-from collections.abc import Collection
-
-import more_itertools as mit
-import pint
-import polars
-import pyparsing as pp
-from pyparsing import common as ppc
 
 import autochem
-from autochem.util import unit_
+import more_itertools as mit
+import polars
+import pyparsing as pp
+from autochem import unit_
+from autochem.unit_ import Units
+from pyparsing import common as ppc
 
-from ... import data, schema, spec_table
+from ... import schema, spec_table
 from ..._mech import Mechanism
-from ..._mech import from_data as mechanism_from_data
 from ...schema import (
-    Errors,
     Reaction,
     ReactionRate,
-    ReactionRateOld,
     Species,
     SpeciesThermo,
 )
@@ -71,7 +66,7 @@ A_UNIT = pp.Opt(
 # mechanism
 def mechanism(
     inp: TextInput, out: TextOutput = None, spc_out: TextOutput = None
-) -> tuple[Mechanism, Errors]:
+) -> Mechanism:
     """Extract the mechanism from a CHEMKIN file.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -80,21 +75,18 @@ def mechanism(
     :return: The mechanism dataclass
     """
     spc_df = species(inp, out=spc_out)
-    rxn_df, err = reactions(inp, out=out, spc_df=spc_df)
+    rxn_df = reactions(inp, out=out, spc_df=spc_df)
     thermo_temps = thermo_temperatures(inp)
-    mech = mechanism_from_data(
-        rxn_inp=rxn_df, spc_inp=spc_df, thermo_temps=thermo_temps
-    )
-    return mech, err
+    return Mechanism(reactions=rxn_df, species=spc_df, thermo_temps=thermo_temps)
 
 
 # reactions
 def reactions(
-    inp: TextInput,
-    spc_df: polars.DataFrame | None = None,
-    out: TextOutput = None,
-) -> tuple[polars.DataFrame, Errors]:
+    inp: TextInput, spc_df: polars.DataFrame | None = None, out: TextOutput = None
+) -> polars.DataFrame:
     """Extract reaction information as a dataframe from a CHEMKIN file.
+
+    Automatically converts to internal units.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
     :param units: Convert the rates to these units, if needed
@@ -102,7 +94,7 @@ def reactions(
     :param out: Optionally, write the output to this file path
     :return: The reactions dataframe, along with any errors that were encountered
     """
-    units = reactions_units(inp)
+    units0 = reactions_units(inp)
 
     def _is_reaction_line(string: str) -> bool:
         return re.search(r"\d\s*$", string)
@@ -113,26 +105,26 @@ def reactions(
         lambda s: not _is_reaction_line(s), rxn_block_str.splitlines()
     )
     rxn_strs = list(map("\n".join, mit.split_before(line_iter, _is_reaction_line)))
-    rxns = [autochem.rate.from_chemkin_string(r, units=units) for r in rxn_strs]
+    rxns = [autochem.rate.from_chemkin_string(r, units=units0) for r in rxn_strs]
 
     data_dct = {
         Reaction.reactants: [r.reactants for r in rxns],
         Reaction.products: [r.products for r in rxns],
         ReactionRate.reversible: [r.reversible for r in rxns],
-        ReactionRate.rate_constant: [r.rate_constant.model_dump() for r in rxns],
+        ReactionRate.rate: [r.rate_constant.model_dump() for r in rxns],
     }
     schema_dct = schema.types([Reaction, ReactionRate], keys=data_dct.keys())
     rxn_df = polars.DataFrame(
         data=data_dct, schema=schema_dct, infer_schema_length=None
     )
 
-    rxn_df, err = schema.reaction_table(
+    rxn_df = schema.reaction_table(
         rxn_df, spc_df=spc_df, model_=[Reaction, ReactionRate], fail_on_error=False
     )
 
     df_.to_csv(rxn_df, out)
 
-    return rxn_df, err
+    return rxn_df
 
 
 def reactions_block(
@@ -148,7 +140,7 @@ def reactions_block(
     return block(inp, KeyWord.REACTIONS, comments=comments, strip=strip)
 
 
-def reactions_units(inp: TextInput) -> unit_.Units:
+def reactions_units(inp: TextInput) -> Units:
     """Get the units for reaction rate constants.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -158,22 +150,9 @@ def reactions_units(inp: TextInput) -> unit_.Units:
     rxn_block_str = reactions_block(inp, comments=False, strip=False)
     assert isinstance(rxn_block_str, str), f"inp = {inp}"
 
-    line1 = rxn_block_str.splitlines()[0]
-    line1_units = list(map(pint.Unit, map(str.lower, line1.split())))
-
-    substance = next((u for u in line1_units if u.is_compatible_with("mol")), "mol")
-    energy_per_substance = next(
-        (u for u in line1_units if u.is_compatible_with("cal/mol")), "cal/mol"
-    )
-    energy = unit_.dimension_unit(energy_per_substance, "energy")
-
-    assert substance == unit_.dimension_unit(
-        energy_per_substance, "substance"
-    ), f"Incompatible units: {substance} !~ {energy_per_substance}"
-
-    units = unit_.CHEMKIN_UNITS
-    units = units.update({"energy": energy, "substance": substance})
-    return units
+    line1, *_ = rxn_block_str.split("\n", maxsplit=1)
+    line1_units = list(map(str.lower, re.split(r"(?<!/)\s+(?!/)", line1)))
+    return unit_.system.from_unit_sequence(line1_units)
 
 
 # species

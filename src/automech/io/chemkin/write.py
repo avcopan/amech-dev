@@ -1,17 +1,23 @@
 """Functions for writing CHEMKIN-formatted files."""
 
+import functools
 import itertools
 from pathlib import Path
 
 import automol
 import polars
+from autochem import rate, unit_
+from autochem.unit_ import UNITS
+from autochem.util import chemkin
 
-from ... import _mech, reac_table, schema
+from ... import reac_table, schema
 from ..._mech import Mechanism
-from ...data import reac
-from ...schema import Reaction, ReactionRateOld, ReactionSorted, Species, SpeciesThermo
-from ...util import df_
+from ...schema import ReactionSorted, Species, SpeciesThermo
+from ...util import col_
 from .read import KeyWord
+
+ENERGY_PER_SUBSTANCE_UNIT = unit_.string(UNITS.energy_per_substance).upper()
+SUBSTANCE_UNIT = unit_.string(UNITS.substance).upper()
 
 
 def mechanism(mech: Mechanism, out: str | Path | None = None) -> str:
@@ -41,8 +47,7 @@ def elements_block(mech: Mechanism) -> str:
     :param mech: A mechanism
     :return: The elements block string
     """
-    spc_df = _mech.species(mech)
-    fmls = list(map(automol.amchi.formula, spc_df[Species.amchi].to_list()))
+    fmls = list(map(automol.amchi.formula, mech.species[Species.amchi].to_list()))
     elem_strs = set(itertools.chain(*(f.keys() for f in fmls)))
     elem_strs = automol.form.sorted_symbols(elem_strs)
     return block(KeyWord.ELEMENTS, elem_strs)
@@ -54,12 +59,13 @@ def species_block(mech: Mechanism) -> str:
     :param mech: A mechanism
     :return: The species block string
     """
-    spc_df = _mech.species(mech)
-    name_width = 1 + spc_df[Species.name].str.len_chars().max()
-    smi_width = 1 + spc_df[Species.smiles].str.len_chars().max()
+    name_width = 1 + mech.species[Species.name].str.len_chars().max()
+    smi_width = 1 + mech.species[Species.smiles].str.len_chars().max()
     spc_strs = [
         f"{n:<{name_width}} ! SMILES: {s:<{smi_width}} AMChI: {c}"
-        for n, s, c in spc_df.select(Species.name, Species.smiles, Species.amchi).rows()
+        for n, s, c in mech.species.select(
+            Species.name, Species.smiles, Species.amchi
+        ).rows()
     ]
     return block(KeyWord.SPECIES, spc_strs)
 
@@ -70,12 +76,11 @@ def thermo_block(mech: Mechanism) -> str:
     :param mech: A mechanism
     :return: The thermo block string
     """
-    spc_df = _mech.species(mech)
-    if SpeciesThermo.thermo_string not in spc_df:
+    if SpeciesThermo.thermo_string not in mech.species:
         return None
 
     # Generate the thermo strings
-    therm_strs = spc_df.select(
+    therm_strs = mech.species.select(
         polars.concat_str(
             polars.col(Species.name).str.pad_end(24),
             polars.col(SpeciesThermo.thermo_string),
@@ -83,12 +88,12 @@ def thermo_block(mech: Mechanism) -> str:
     ).to_series()
 
     # Generate the header
-    therm_temps = _mech.thermo_temperatures(mech)
-    if therm_temps is None:
+    thermo_temps = mech.thermo_temps
+    if thermo_temps is None:
         header = None
     else:
-        therm_temps_str = "  ".join(f"{t:.3f}" for t in therm_temps)
-        header = f"ALL\n    {therm_temps_str}"
+        thermo_temps_str = "  ".join(f"{t:.3f}" for t in thermo_temps)
+        header = f"ALL\n    {thermo_temps_str}"
 
     return block(KeyWord.THERM, therm_strs, header=header)
 
@@ -100,64 +105,66 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
     :param frame: Whether to frame the block with its header and footer
     :return: The reactions block string
     """
-    # Generate reaction objects
-    # (Eventually, we should have a function like _mech.with_reaction_objects(mech))
-    rxn_df = reac_table.with_rates(_mech.reactions(mech))
-
     # Generate the header
-    rate_units = _mech.rate_units(mech)
-    if rate_units is None:
-        header = None
-    else:
-        e_unit, a_unit = rate_units
-        header = f"   {e_unit}   {a_unit}"
+    header = f"   {ENERGY_PER_SUBSTANCE_UNIT}   {SUBSTANCE_UNIT}"
 
+    rxn_df = mech.reactions
+
+    # Quit if no reactions
     if rxn_df.is_empty():
         return block(KeyWord.REACTIONS, "", header=header, frame=frame)
 
-    # Format rate data
-    cols = [
-        Reaction.reactants,
-        Reaction.products,
-        ReactionRateOld.rate,
-        ReactionRateOld.colliders,
-    ]
-    rxn_df = df_.map_(rxn_df, cols, "obj", reac.from_data, dtype_=object)
+    # Identify duplicates
+    dup_col = col_.temp()
+    rxn_df = reac_table.with_duplicate_column(rxn_df, dup_col)
 
-    # Determine the max equation width for formatting
-    rxn_df = df_.map_(rxn_df, "obj", "ck_eq", reac.chemkin_equation)
-    eq_width = 10 + rxn_df["ck_eq"].str.len_chars().max()
+    # Add reaction objects
+    obj_col = col_.temp()
+    rxn_df = reac_table.with_rate_objects(rxn_df, obj_col, fill=True)
 
-    # Detect duplicates
-    rxn_df = df_.map_(rxn_df, "obj", "dup_key", reac.chemkin_duplicate_key)
-    rxn_df = rxn_df.with_columns(polars.col("dup_key").is_duplicated().alias("dup"))
+    # Add reaction equations to determine apppropriate width
+    eq_col = col_.temp()
+    rxn_df = rxn_df.with_columns(
+        polars.col(obj_col)
+        .map_elements(rate.chemkin_equation, return_dtype=polars.String)
+        .alias(eq_col)
+    )
+    eq_width = 8 + rxn_df.get_column(eq_col).str.len_chars().max()
 
-    # Generate the CHEMKIN strings for each reaction
-    if schema.has_columns(rxn_df, ReactionSorted):
-        cols = (
-            "obj",
-            "dup",
-            ReactionSorted.pes,
-            ReactionSorted.subpes,
-            ReactionSorted.channel,
-        )
-        rxn_strs = [
-            (
-                text_with_comments(
-                    reac.chemkin_string(o, dup=d, eq_width=eq_width),
-                    f"pes.subpes.channel  {p}.{s}.{c}",
-                )
-                if any(x is not None for x in (p, s, c))
-                else reac.chemkin_string(o, dup=d, eq_width=eq_width)
+    # Add Chemkin rate strings
+    ck_col = col_.temp()
+    chemkin_string_ = functools.partial(rate.chemkin_string, eq_width=eq_width)
+    rxn_df = rxn_df.with_columns(
+        polars.col(obj_col)
+        .map_elements(chemkin_string_, return_dtype=polars.String)
+        .alias(ck_col)
+    )
+
+    # Add duplicate keywords
+    rxn_df = rxn_df.with_columns(
+        polars.when(dup_col)
+        .then(
+            polars.col(ck_col).map_elements(
+                chemkin.write_with_dup, return_dtype=polars.String
             )
-            for o, d, p, s, c in rxn_df.select(*cols).rows()
-        ]
-    else:
-        rxn_strs = [
-            reac.chemkin_string(o, dup=d, eq_width=eq_width)
-            for o, d in rxn_df.select("obj", "dup").rows()
-        ]
+        )
+        .otherwise(polars.col(ck_col))
+    )
 
+    # Add sort parameters
+    srt_col = col_.temp()
+    srt_expr = (
+        polars.concat_list(schema.columns(ReactionSorted))
+        if schema.has_columns(rxn_df, ReactionSorted)
+        else polars.lit([None, None, None])
+    )
+    rxn_df = rxn_df.with_columns(srt_expr.alias(srt_col))
+
+    # Get strings
+    rxn_strs = [
+        (text_with_comments(r, f"pes.subpes.channel  {'.'.join(s)}") if any(s) else r)
+        for r, s in rxn_df.select(ck_col, srt_col).rows()
+    ]
     return block(KeyWord.REACTIONS, rxn_strs, header=header, frame=frame)
 
 

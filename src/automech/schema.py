@@ -55,8 +55,10 @@ class Reaction(Model):
 
 
 class ReactionRate(Model):
+    """Reaction table with rate."""
+
     reversible: bool
-    rate_constant: Struct
+    rate: Struct
 
 
 class ReactionRateOld(Model):
@@ -280,6 +282,29 @@ def reaction_table(
     spc_df: polars.DataFrame | None = None,
     keep_extra: bool = True,
     fail_on_error: bool = True,
+) -> polars.DataFrame:
+    """Validate a reactions DataFrame.
+
+    :param df: The DataFrame
+    :param models: Extra reaction models to validate against
+    :param spc_df: Optionally, pass in a species DataFrame for determining formulas
+    :param keep_extra: Keep extra columns that aren't in the models?
+    :param fail_on_error: Whether or not to raise an Exception if there is an error
+    :return: The validated DataFrame, along with any errors
+    """
+    df, err = reaction_table_with_errors(
+        df=df, model_=model_, spc_df=spc_df, keep_extra=keep_extra
+    )
+    if fail_on_error:
+        assert err.is_empty(), f"Errors: {err}"
+    return df
+
+
+def reaction_table_with_errors(
+    df: polars.DataFrame,
+    model_: Model | Sequence[Model] = (),
+    spc_df: polars.DataFrame | None = None,
+    keep_extra: bool = True,
 ) -> tuple[polars.DataFrame, Errors]:
     """Validate a reactions DataFrame.
 
@@ -305,8 +330,6 @@ def reaction_table(
     check_cols = [c for c in ReactionCheck.to_schema().columns if c in df]
     check_expr = polars.concat_list(check_cols).list.any()
     err_df = df.filter(check_expr)
-    if fail_on_error:
-        assert err_df.is_empty(), f"Encountered errors: {err_df}"
 
     err = Errors(reactions=err_df)
     df = df.filter(~check_expr)

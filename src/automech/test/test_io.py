@@ -36,7 +36,7 @@ def test__chemkin(mech_file_name, nrxns, nspcs, roundtrip):
     """Test automech.io.chemkin."""
     # Read
     mech_path = DATA_PATH / mech_file_name
-    mech0, _ = automech.io.chemkin.read.mechanism(mech_path)
+    mech0 = automech.io.chemkin.read.mechanism(mech_path)
     print(mech0)
     check_counts(mech0, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
@@ -45,10 +45,10 @@ def test__chemkin(mech_file_name, nrxns, nspcs, roundtrip):
     mech_str = automech.io.chemkin.write.mechanism(mech0, out=out)
     print(mech_str)
     #   - Check the direct output
-    mech, _ = automech.io.chemkin.read.mechanism(mech_str)
+    mech = automech.io.chemkin.read.mechanism(mech_str)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
     #   - Check the file output
-    mech, _ = automech.io.chemkin.read.mechanism(out)
+    mech = automech.io.chemkin.read.mechanism(out)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
     if roundtrip:
@@ -72,7 +72,7 @@ def test__mechanalyzer(rxn_file_name, spc_file_name, nrxns, nspcs):
     # Read
     rxn_path = DATA_PATH / rxn_file_name
     spc_path = DATA_PATH / spc_file_name
-    mech, _ = automech.io.mechanalyzer.read.mechanism(rxn_path, spc_path)
+    mech = automech.io.mechanalyzer.read.mechanism(rxn_path, spc_path)
     print(mech)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
@@ -84,10 +84,10 @@ def test__mechanalyzer(rxn_file_name, spc_file_name, nrxns, nspcs):
     )
     print(mech_str)
     #   - Check the direct output
-    mech, _ = automech.io.mechanalyzer.read.mechanism(mech_str, csv_str)
+    mech = automech.io.mechanalyzer.read.mechanism(mech_str, csv_str)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
     #   - Check the file output
-    mech, _ = automech.io.mechanalyzer.read.mechanism(rxn_out, spc_out)
+    mech = automech.io.mechanalyzer.read.mechanism(rxn_out, spc_out)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
 
@@ -103,7 +103,7 @@ def test__rmg(rxn_file_name, spc_file_name, nrxns, nspcs):
     # Read
     rxn_path = DATA_PATH / rxn_file_name
     spc_path = DATA_PATH / spc_file_name
-    mech, _ = automech.io.rmg.read.mechanism(rxn_path, spc_path)
+    mech = automech.io.rmg.read.mechanism(rxn_path, spc_path)
     print(mech)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
@@ -111,10 +111,11 @@ def test__rmg(rxn_file_name, spc_file_name, nrxns, nspcs):
 
 
 if __name__ == "__main__":
-    test__chemkin("webb_sample.inp", 12, 18, True)
-    test__chemkin("ethylene.dat", 26, 31, False)
-    test__mechanalyzer("syngas.dat", "syngas_species.csv", 74, 18)
-    test__mechanalyzer("propyl.dat", "propyl_species.csv", 8, 12)
+    test__chemkin("butane.dat", 101, 76, False)
+    # test__chemkin("ethylene.dat", 26, 31, False)
+    # test__chemkin("webb_sample.inp", 12, 18, True)
+    # test__mechanalyzer("syngas.dat", "syngas_species.csv", 74, 18)
+    # test__mechanalyzer("propyl.dat", "propyl_species.csv", 8, 12)
     # test__chemkin("LLNL_C2H4_mech.dat", 26, 31)
     # test__rmg("cyclopentene.dat", "cyclopentene_species.txt", 100, 63)
     # test__rmg("webb_sample.inp", "webb_sample_species.txt", 11, 16)

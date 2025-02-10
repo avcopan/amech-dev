@@ -2,7 +2,7 @@
 
 from . import data, io, net, schema, util
 from ._mech import (
-    Mechanism,
+    OldMechanism,
     add_reactions,
     are_equivalent,
     combine_all,
@@ -51,7 +51,7 @@ from ._mech import (
 
 __all__ = [
     # types
-    "Mechanism",
+    "OldMechanism",
     # functions
     "from_data",
     "from_network",
