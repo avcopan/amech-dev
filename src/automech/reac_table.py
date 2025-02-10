@@ -9,7 +9,7 @@ import more_itertools as mit
 import polars
 
 from . import schema, spec_table
-from .schema import Reaction, ReactionRate, ReactionRateOld, Species
+from .schema import Reaction, ReactionRate, Species
 from .util import col_, df_
 
 m_col_ = col_
@@ -262,7 +262,10 @@ def with_sorted_reagents(
 
 
 def with_rate_objects(
-    rxn_df: polars.DataFrame, col: str, fill: bool = False
+    rxn_df: polars.DataFrame,
+    col: str,
+    fill: bool = False,
+    # struct=
 ) -> polars.DataFrame:
     """Get reaction rate objects as a list.
 
@@ -321,13 +324,7 @@ def without_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     :param rxn_df: Reaction DataFrame
     :return: Reaction DataFrame
     """
-    if ReactionRateOld.rate not in rxn_df:
-        rxn_df = rxn_df.drop(ReactionRateOld.rate)
-
-    if ReactionRateOld.colliders not in rxn_df:
-        rxn_df = rxn_df.drop(ReactionRateOld.colliders)
-
-    return rxn_df
+    return rxn_df.drop(ReactionRate.rate, ReactionRate.reversible, strict=False)
 
 
 def with_species_presence_column(

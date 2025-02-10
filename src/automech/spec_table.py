@@ -264,3 +264,45 @@ def species_id_fill_value(
     spin = dct[Species.spin] if Species.spin in dct else automol.amchi.guess_spin(amchi)
     charge = dct[Species.charge] if Species.charge in dct else 0
     return (amchi, spin, charge)
+
+
+def expand_stereo(
+    spc_df: polars.DataFrame, enant: bool = True, strained: bool = False
+) -> polars.DataFrame:
+    """Stereoexpand species from mechanism.
+
+    :param spc_df: Species table, as DataFrame
+    :param enant: Distinguish between enantiomers?
+    :param strained: Include strained stereoisomers?
+    :return: Stereoexpanded species table
+    """
+
+    # Do species expansion based on AMChIs
+    def _expand_amchi(chi):
+        """Expand stereo for AMChIs."""
+        return automol.amchi.expand_stereo(chi, enant=enant, strained=strained)
+
+    spc_df = spc_df.rename(col_.to_orig(Species.amchi))
+    spc_df = df_.map_(
+        spc_df, col_.orig(Species.amchi), Species.amchi, _expand_amchi, bar=True
+    )
+    spc_df = spc_df.explode(polars.col(Species.amchi))
+
+    # Update species names
+    def _stereo_name(orig_name, chi):
+        """Determine stereo name from AMChI."""
+        return automol.amchi.chemkin_name(chi, root_name=orig_name)
+
+    spc_df = spc_df.rename(col_.to_orig(Species.name))
+    spc_df = df_.map_(
+        spc_df, (col_.orig(Species.name), Species.amchi), Species.name, _stereo_name
+    )
+
+    # Update SMILES strings
+    def _stereo_smiles(chi):
+        """Determine stereo smiles from AMChI."""
+        return automol.amchi.smiles(chi)
+
+    spc_df = spc_df.rename(col_.to_orig(Species.smiles))
+    spc_df = df_.map_(spc_df, Species.amchi, Species.smiles, _stereo_smiles, bar=True)
+    return spc_df

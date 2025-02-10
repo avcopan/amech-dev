@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import polars
 
-from ... import _mech, reac_table
+from ... import reac_table
 from ..._mech import Mechanism
 from ...util.io_ import TextInput
 from . import read
@@ -19,10 +19,10 @@ def thermo(mech: Mechanism, inp_: TextInput | Sequence[TextInput]) -> Mechanism:
     """
     inp_ = [inp_] if isinstance(inp_, TextInput) else inp_
 
-    spc_df = _mech.species(mech)
+    mech = mech.model_copy()
     for inp in inp_:
-        spc_df = read.thermo(inp, spc_df=spc_df)
-    return _mech.set_species(mech, spc_df)
+        mech.species = read.thermo(inp, spc_df=mech.species)
+    return mech
 
 
 def rates(mech: Mechanism, inp_: TextInput | Sequence[TextInput]) -> Mechanism:
@@ -33,9 +33,8 @@ def rates(mech: Mechanism, inp_: TextInput | Sequence[TextInput]) -> Mechanism:
     :return: Mechanism
     """
     inp_ = [inp_] if isinstance(inp_, TextInput) else inp_
-    units = _mech.rate_units(mech)
-    spc_df = _mech.species(mech)
-    rxn_dfs = [read.reactions(inp, units=units, spc_df=spc_df) for inp in inp_]
-    rxn_df0 = _mech.reactions(mech)
-    rxn_df = reac_table.update(rxn_df0, polars.concat(rxn_dfs))
-    return _mech.set_reactions(mech, rxn_df)
+
+    mech = mech.model_copy()
+    rxn_dfs = [read.reactions(inp, spc_df=mech.species) for inp in inp_]
+    mech.reactions = reac_table.update(mech.reactions, polars.concat(rxn_dfs))
+    return mech

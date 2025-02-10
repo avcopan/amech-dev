@@ -8,7 +8,6 @@ import pandas
 import polars
 
 from ..._mech import Mechanism
-from ..._mech import species as mech_species
 from ...schema import Model, Species, table_with_columns_from_models
 from ...util import df_
 from ..chemkin import write as chemkin_write
@@ -66,7 +65,7 @@ def species(
     :return: A MechAnalyzer species dataframe
     """
     # Write species
-    spc_df = mech_species(mech)
+    spc_df = mech.species
     spc_df = df_.map_(
         spc_df, Species.amchi, MASpecies.inchi, automol.amchi.chi_, bar=True
     )

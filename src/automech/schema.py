@@ -61,13 +61,6 @@ class ReactionRate(Model):
     rate: Struct
 
 
-class ReactionRateOld(Model):
-    """Reaction table with rate."""
-
-    rate: Struct
-    colliders: Struct
-
-
 class ReactionSorted(Model):
     """Reaction table with sort information."""
 
@@ -97,7 +90,7 @@ class SpeciesMisc(Model):
     orig_thermo_string: str
 
 
-REACTION_MODELS = (Reaction, ReactionRateOld, ReactionStereo, ReactionCheck)
+REACTION_MODELS = (Reaction, ReactionRate, ReactionStereo, ReactionCheck)
 
 
 # Error data structure
@@ -334,12 +327,6 @@ def reaction_table_with_errors(
     err = Errors(reactions=err_df)
     df = df.filter(~check_expr)
     df = df.drop(check_cols)
-
-    if ReactionRateOld.colliders in df:
-        fill_val = polars.lit(
-            {"M": None}, dtype=df_.dtype(df, ReactionRateOld.colliders)
-        )
-        df = df.with_columns(polars.col(ReactionRateOld.colliders).fill_null(fill_val))
 
     for model in model_:
         df = model.validate(df)
