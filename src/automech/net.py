@@ -10,7 +10,7 @@ import networkx
 import pyvis
 
 from . import data
-from .schema import Reaction, Species
+from .schema_old import Reaction, Species
 
 
 class Key:

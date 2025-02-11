@@ -6,7 +6,7 @@ import pytest
 from automol.graph import enum
 
 import automech
-from automech.schema import ReactionSorted, Species
+from automech.schema_old import ReactionSorted, Species
 from automech.util import df_
 
 DATA_PATH = Path(__file__).parent / "data"

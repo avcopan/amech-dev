@@ -8,7 +8,7 @@ import pandas
 import polars
 
 from ..._mech import Mechanism
-from ...schema import species_table
+from ...schema_old import species_table
 from ...util import df_
 from ..chemkin import read as chemkin_read
 

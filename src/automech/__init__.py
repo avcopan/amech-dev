@@ -1,6 +1,6 @@
 """Data processing at the level of whole mechanisms."""
 
-from . import data, io, net, schema, util
+from . import data, io, net, schema_old, util
 from ._mech import (
     Mechanism,
     are_equivalent,
@@ -81,6 +81,6 @@ __all__ = [
     "io",
     "data",
     "util",
-    "schema",
+    "schema_old",
     "net",
 ]

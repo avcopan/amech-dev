@@ -8,8 +8,8 @@ import automol
 import more_itertools as mit
 import polars
 
-from . import schema, spec_table
-from .schema import Reaction, ReactionRate, Species
+from . import schema_old, spec_table
+from .schema_old import Reaction, ReactionRate, Species
 from .util import col_, df_
 
 m_col_ = col_
@@ -17,7 +17,7 @@ m_col_ = col_
 DEFAULT_REAGENT_SEPARATOR = " + "
 
 ID_COLS = (Reaction.reactants, Reaction.products)
-ReactionId = tuple[*schema.types(Reaction, ID_COLS, py=True).values()]
+ReactionId = tuple[*schema_old.types(Reaction, ID_COLS, py=True).values()]
 
 
 # properties
@@ -147,7 +147,7 @@ def add_missing_reactions_by_id(
     # Append missing reactions to reactions DataFrame
     miss_rxn_ids = [s for i, s in enumerate(rxn_ids) if i not in rxn_df[idx_col]]
     miss_rxn_df = polars.DataFrame(miss_rxn_ids, schema=id_cols0, orient="row")
-    miss_rxn_df, *_ = schema.reaction_table_with_errors(miss_rxn_df)
+    miss_rxn_df, *_ = schema_old.reaction_table_with_errors(miss_rxn_df)
     return polars.concat([rxn_df.drop(idx_col), miss_rxn_df], how="diagonal_relaxed")
 
 

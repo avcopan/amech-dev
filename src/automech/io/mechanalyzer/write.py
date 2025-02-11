@@ -8,7 +8,7 @@ import pandas
 import polars
 
 from ..._mech import Mechanism
-from ...schema import Model, Species, table_with_columns_from_models
+from ...schema_old import Model, Species, table_with_columns_from_models
 from ...util import df_
 from ..chemkin import write as chemkin_write
 

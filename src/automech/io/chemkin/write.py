@@ -10,9 +10,9 @@ from autochem import rate, unit_
 from autochem.unit_ import UNITS
 from autochem.util import chemkin
 
-from ... import reac_table, schema
+from ... import reac_table, schema_old
 from ..._mech import Mechanism
-from ...schema import ReactionSorted, Species, SpeciesThermo
+from ...schema_old import ReactionSorted, Species, SpeciesThermo
 from ...util import col_
 from .read import KeyWord
 
@@ -154,8 +154,8 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
     # Add sort parameters
     srt_col = col_.temp()
     srt_expr = (
-        polars.concat_list(schema.columns(ReactionSorted))
-        if schema.has_columns(rxn_df, ReactionSorted)
+        polars.concat_list(schema_old.columns(ReactionSorted))
+        if schema_old.has_columns(rxn_df, ReactionSorted)
         else polars.lit([None, None, None])
     )
     rxn_df = rxn_df.with_columns(srt_expr.alias(srt_col))

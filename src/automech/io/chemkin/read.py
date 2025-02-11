@@ -11,9 +11,9 @@ from autochem import unit_
 from autochem.unit_ import Units
 from pyparsing import common as ppc
 
-from ... import schema, spec_table
+from ... import schema_old, spec_table
 from ..._mech import Mechanism
-from ...schema import (
+from ...schema_old import (
     Reaction,
     ReactionRate,
     Species,
@@ -113,12 +113,12 @@ def reactions(
         ReactionRate.reversible: [r.reversible for r in rxns],
         ReactionRate.rate: [r.rate_constant.model_dump() for r in rxns],
     }
-    schema_dct = schema.types([Reaction, ReactionRate], keys=data_dct.keys())
+    schema_dct = schema_old.types([Reaction, ReactionRate], keys=data_dct.keys())
     rxn_df = polars.DataFrame(
         data=data_dct, schema=schema_dct, infer_schema_length=None
     )
 
-    rxn_df = schema.reaction_table(
+    rxn_df = schema_old.reaction_table(
         rxn_df, spc_df=spc_df, model_=[Reaction, ReactionRate], fail_on_error=False
     )
 
@@ -182,7 +182,7 @@ def species(inp: TextInput, out: TextOutput = None) -> polars.DataFrame:
     therm_df = thermo(inp, spc_df=spc_df)
     spc_df = spc_df if therm_df is None else therm_df
 
-    spc_df = schema.species_table(spc_df)
+    spc_df = schema_old.species_table(spc_df)
 
     df_.to_csv(spc_df, out)
 

@@ -5,14 +5,14 @@ from collections.abc import Mapping, Sequence
 import automol
 import polars
 
-from . import schema
-from .schema import Species
+from . import schema_old
+from .schema_old import Species
 from .util import col_, df_
 
 m_col_ = col_
 
 ID_COLS = (Species.amchi, Species.spin, Species.charge)
-SpeciesId = tuple[*schema.types(Species, ID_COLS, py=True).values()]
+SpeciesId = tuple[*schema_old.types(Species, ID_COLS, py=True).values()]
 
 
 # properties
@@ -106,7 +106,7 @@ def add_missing_species_by_id(
 
     miss_spc_ids = [s for i, s in enumerate(spc_ids) if i not in spc_df[idx_col]]
     miss_spc_df = polars.DataFrame(miss_spc_ids, schema=id_col_, orient="row")
-    miss_spc_df = schema.species_table(miss_spc_df)
+    miss_spc_df = schema_old.species_table(miss_spc_df)
     return polars.concat([spc_df.drop(idx_col), miss_spc_df], how="diagonal_relaxed")
 
 

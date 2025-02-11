@@ -4,15 +4,17 @@ import functools
 import itertools
 from collections.abc import Callable, Collection, Mapping, Sequence
 
-import autochem
 import automol
 import more_itertools as mit
 import polars
 import pydantic
 
-from . import data, reac_table, schema, spec_table
+import autochem
+
+from . import data, reac_table, schema, schema_old, spec_table
 from . import net as net_
-from .schema import (
+from .schema.species import SpeciesDataFrame_
+from .schema_old import (
     Reaction,
     ReactionRate,
     ReactionSorted,
@@ -28,7 +30,7 @@ class Mechanism(pydantic.BaseModel):
     """Chemical kinetic mechanism."""
 
     reactions: DataFrame_
-    species: DataFrame_
+    species: SpeciesDataFrame_
     thermo_temps: tuple[float, float, float] | None = None
 
 
@@ -70,8 +72,6 @@ def from_smiles(
     spc_smis: Sequence[str] = (),
     rxn_smis: Sequence[str] = (),
     name_dct: dict[str, str] | None = None,
-    spin_dct: dict[str, int] | None = None,
-    charge_dct: dict[str, int] | None = None,
     src_mech: Mechanism | None = None,
 ) -> Mechanism:
     """Generate mechanism using SMILES strings for species names.
@@ -86,10 +86,6 @@ def from_smiles(
     :param src_mech: Optional source mechanism for species names
     :return: Mechanism
     """
-    name_dct = {} if name_dct is None else name_dct
-    spin_dct = {} if spin_dct is None else spin_dct
-    charge_dct = {} if charge_dct is None else charge_dct
-
     # Add in any missing species from reaction SMILES
     spc_smis_by_rxn = [
         rs + ps
@@ -98,16 +94,8 @@ def from_smiles(
     spc_smis = list(mit.unique_everseen(itertools.chain(spc_smis, *spc_smis_by_rxn)))
 
     # Build species dataframe
-    chis = list(map(automol.smiles.amchi, spc_smis))
-    chi_dct = dict(zip(spc_smis, chis, strict=True))
-    name_dct = {chi_dct[k]: v for k, v in name_dct.items() if k in spc_smis}
-    spin_dct = {chi_dct[k]: v for k, v in spin_dct.items() if k in spc_smis}
-    charge_dct = {chi_dct[k]: v for k, v in charge_dct.items() if k in spc_smis}
-    data_dct = {Species.smiles: spc_smis, Species.amchi: chis}
-    dt = schema.species_types(data_dct.keys())
-    spc_df = polars.DataFrame(data=data_dct, schema=dt)
-    spc_df = schema.species_table(
-        spc_df, name_dct=name_dct, spin_dct=spin_dct, charge_dct=charge_dct
+    spc_df = schema.species.bootstrap(
+        {Species.smiles: spc_smis}, name_dct=name_dct, key=Species.smiles
     )
 
     # Left-update by species key, if source mechanism was provided
@@ -124,7 +112,7 @@ def from_smiles(
         }
         for rs, ps in rxn_smis_lst
     ]
-    dt = schema.reaction_types([Reaction.reactants, Reaction.products])
+    dt = schema_old.reaction_types([Reaction.reactants, Reaction.products])
     rxn_df = polars.DataFrame(data=data_lst, schema=dt)
 
     mech = Mechanism(reactions=rxn_df, species=spc_df)
@@ -244,7 +232,7 @@ def network(mech: Mechanism) -> net_.Network:
     rxn_df = mech.reactions
 
     # Double-check that reagents are sorted
-    rxn_df = schema.reaction_table_with_sorted_reagents(rxn_df)
+    rxn_df = schema_old.reaction_table_with_sorted_reagents(rxn_df)
 
     # Add species and reaction indices
     spc_df = df_.with_index(spc_df, net_.Key.id)
@@ -764,7 +752,7 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     #   b. Group by original names and isolate expanded stereoisomers
     name_col = Species.name
     name_col0 = col_.orig(Species.name)
-    sub_mech.species = schema.species_table(sub_mech.species, model_=SpeciesStereo)
+    sub_mech.species = schema_old.species_table(sub_mech.species, model_=SpeciesStereo)
     sub_mech.species = sub_mech.species.select(*col_dct.keys(), *col_dct.values())
     sub_mech.species = sub_mech.species.group_by(name_col0).agg(polars.all())
 
@@ -957,7 +945,7 @@ def with_sort_data(mech: Mechanism) -> Mechanism:
         }
         for i, (p, s, c) in srt_dct.items()
     ]
-    srt_schema = {idx_col: polars.UInt32, **schema.types([ReactionSorted])}
+    srt_schema = {idx_col: polars.UInt32, **schema_old.types([ReactionSorted])}
     srt_df = polars.DataFrame(srt_data, schema=srt_schema)
 
     # Add sort data to reactions dataframe and sort

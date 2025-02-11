@@ -107,7 +107,7 @@ def test__rmg(rxn_file_name, spc_file_name, nrxns, nspcs):
     print(mech)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
-    assert automech.schema.SpeciesThermo.thermo_string in mech.species
+    assert automech.schema_old.SpeciesThermo.thermo_string in mech.species
 
 
 if __name__ == "__main__":
