@@ -33,7 +33,13 @@ class ReactionRate(Model):
     """Reaction table with rate."""
 
     reversible: bool
-    rate: polars.Struct
+    rate_constant: polars.Struct
+
+
+assert all(
+    f in pandera_.columns([Reaction, ReactionRate])
+    for f in autochem.rate.Rate.model_fields
+), "Make sure field names match AutoChem."
 
 
 class ReactionSorted(Model):
@@ -111,8 +117,8 @@ def has_rates(rxn_df: polars.DataFrame) -> bool:
     :param rxn_df: Reactions DataFrame
     :return: `True` if it does, `False` if not
     """
-    return ReactionRate.rate in rxn_df and df_.has_values(
-        rxn_df.get_column(ReactionRate.rate).struct.unnest()
+    return ReactionRate.rate_constant in rxn_df and df_.has_values(
+        rxn_df.get_column(ReactionRate.rate_constant).struct.unnest()
     )
 
 
@@ -336,7 +342,6 @@ def with_rate_objects(
     rxn_df: polars.DataFrame,
     col: str,
     fill: bool = False,
-    # struct=
 ) -> polars.DataFrame:
     """Get reaction rate objects as a list.
 
@@ -352,7 +357,7 @@ def with_rate_objects(
         Reaction.reactants,
         Reaction.products,
         ReactionRate.reversible,
-        ReactionRate.rate,
+        ReactionRate.rate_constant,
     ]
     return rxn_df.with_columns(
         polars.struct(cols)
@@ -375,15 +380,19 @@ def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     if ReactionRate.reversible not in rxn_df:
         rxn_df = rxn_df.with_columns(polars.lit(rev0).alias(ReactionRate.reversible))
 
-    if ReactionRate.rate not in rxn_df:
-        rxn_df = rxn_df.with_columns(polars.lit(rate0).alias(ReactionRate.rate))
+    if ReactionRate.rate_constant not in rxn_df:
+        rxn_df = rxn_df.with_columns(
+            polars.lit(rate0).alias(ReactionRate.rate_constant)
+        )
 
     rev0_lit = polars.lit(rev0, dtype=df_.dtype(rxn_df, ReactionRate.reversible))
-    rate0_lit = polars.lit(rate0, dtype=df_.dtype(rxn_df, ReactionRate.rate))
+    rate0_lit = polars.lit(rate0, dtype=df_.dtype(rxn_df, ReactionRate.rate_constant))
     rxn_df = rxn_df.with_columns(
         polars.col(ReactionRate.reversible).fill_null(rev0_lit)
     )
-    rxn_df = rxn_df.with_columns(polars.col(ReactionRate.rate).fill_null(rate0_lit))
+    rxn_df = rxn_df.with_columns(
+        polars.col(ReactionRate.rate_constant).fill_null(rate0_lit)
+    )
     return rxn_df
 
 
@@ -395,7 +404,9 @@ def without_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     :param rxn_df: Reaction DataFrame
     :return: Reaction DataFrame
     """
-    return rxn_df.drop(ReactionRate.rate, ReactionRate.reversible, strict=False)
+    return rxn_df.drop(
+        ReactionRate.rate_constant, ReactionRate.reversible, strict=False
+    )
 
 
 def with_species_presence_column(

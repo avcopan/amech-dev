@@ -6,6 +6,7 @@ from pathlib import Path
 
 import automol
 import polars
+
 from autochem import rate, unit_
 from autochem.unit_ import UNITS
 from autochem.util import chemkin
@@ -17,8 +18,8 @@ from ...species import Species, SpeciesThermo
 from ...util import c_, pandera_
 from .read import KeyWord
 
-ENERGY_PER_SUBSTANCE_UNIT = unit_.string(UNITS.energy_per_substance).upper()
-SUBSTANCE_UNIT = unit_.string(UNITS.substance).upper()
+ENERGY_PER_SUBSTANCE = unit_.string(UNITS.energy_per_substance).upper().replace(" ", "")
+SUBTANCE = unit_.string(UNITS.substance).upper().replace(" ", "")
 
 
 def mechanism(mech: Mechanism, out: str | Path | None = None) -> str:
@@ -107,7 +108,7 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
     :return: The reactions block string
     """
     # Generate the header
-    header = f"   {ENERGY_PER_SUBSTANCE_UNIT}   {SUBSTANCE_UNIT}"
+    header = f"   {ENERGY_PER_SUBSTANCE}   {SUBTANCE}"
 
     rxn_df = mech.reactions
 

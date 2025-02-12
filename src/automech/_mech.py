@@ -747,11 +747,13 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
 
     # 2. Reaction table
     #   a. Identify subset of reactions to be expanded
-    has_rate = ReactionRate.rate in mech.reactions
+    has_rate = ReactionRate.rate_constant in mech.reactions
     mech.reactions = reaction.with_rates(mech.reactions)
 
     mech.reactions = mech.reactions.with_columns(
-        **c_.from_orig([Reaction.reactants, Reaction.products, ReactionRate.rate])
+        **c_.from_orig(
+            [Reaction.reactants, Reaction.products, ReactionRate.rate_constant]
+        )
     )
     needs_exp = (
         polars.concat_list(Reaction.reactants, Reaction.products)
@@ -771,7 +773,7 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
         )
 
     obj_col = c_.temp()
-    cols = [Reaction.reactants, Reaction.products, ReactionRate.rate]
+    cols = [Reaction.reactants, Reaction.products, ReactionRate.rate_constant]
     dtypes = list(map(polars.List, map(exp_rxn_df.schema.get, cols)))
     exp_rxn_df = reaction.with_rate_objects(exp_rxn_df, col=obj_col)
     exp_rxn_df = df_.map_(exp_rxn_df, obj_col, cols, exp_, dtype_=dtypes, bar=True)
@@ -780,7 +782,7 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
 
     if not has_rate:
         mech.reactions = reaction.without_rates(mech.reactions)
-        mech.reactions = mech.reactions.drop(c_.orig(ReactionRate.rate))
+        mech.reactions = mech.reactions.drop(c_.orig(ReactionRate.rate_constant))
 
     return mech
 

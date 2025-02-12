@@ -108,7 +108,7 @@ def reactions(
         Reaction.reactants: [r.reactants for r in rxns],
         Reaction.products: [r.products for r in rxns],
         ReactionRate.reversible: [r.reversible for r in rxns],
-        ReactionRate.rate: [r.rate_constant.model_dump() for r in rxns],
+        ReactionRate.rate_constant: [r.rate_constant.model_dump() for r in rxns],
     }
     rxn_df = reaction.bootstrap(data, spc_df=spc_df)
 
