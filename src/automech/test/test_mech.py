@@ -6,7 +6,8 @@ import pytest
 from automol.graph import enum
 
 import automech
-from automech.schema import ReactionSorted, Species
+from automech.reac_table import ReactionSorted
+from automech.spec_table import Species
 from automech.util import df_
 
 DATA_PATH = Path(__file__).parent / "data"
@@ -156,9 +157,7 @@ def test__rename(mech0, name_mech, nspcs):
 )
 def test__expand_parent_stereo(par_mech, mech, rcount, scount):
     exp_mech, _ = automech.expand_stereo(mech)
-    exp_par_mech = automech.expand_parent_stereo(
-        par_mech=par_mech, exp_sub_mech=exp_mech
-    )
+    exp_par_mech = automech.expand_parent_stereo(mech=par_mech, sub_mech=exp_mech)
     print(exp_par_mech)
     assert automech.reaction_count(exp_par_mech) == rcount
     assert automech.species_count(exp_par_mech) == scount
@@ -206,7 +205,7 @@ def test__enumerate_reactions(mech0, smarts, smis_, rcount, scount, src_mech):
 def test__with_sort_data(mech0, srt_dct0):
     """Test automech.with_sort_data."""
     mech = automech.with_sort_data(mech0)
-    rxn_df = df_.with_index(automech.reactions(mech), "id")
+    rxn_df = df_.with_index(mech.reactions, "id")
     srt_dct = df_.lookup_dict(
         rxn_df,
         "id",
@@ -214,6 +213,22 @@ def test__with_sort_data(mech0, srt_dct0):
     )
     print(srt_dct)
     assert srt_dct == srt_dct0, f"\n{srt_dct} !=\n{srt_dct0}"
+
+
+@pytest.mark.parametrize(
+    "rxn_file_name, spc_file_name, rxn_count, err_count",
+    [
+        ("syngas.dat", "syngas_species.csv", 74, 4),
+    ],
+)
+def test__sanitize(rxn_file_name, spc_file_name, rxn_count, err_count):
+    """Test sanitize function."""
+    rxn_path = DATA_PATH / rxn_file_name
+    spc_path = DATA_PATH / spc_file_name
+    mech = automech.io.mechanalyzer.read.mechanism(rxn_path, spc_path)
+    rxn_df, err_df = automech.reac_table.sanitize(mech.reactions, spc_df=mech.species)
+    assert df_.count(rxn_df) == rxn_count, f"{df_.count(rxn_df)} != {rxn_count}"
+    assert df_.count(err_df) == err_count, f"{df_.count(err_df)} != {err_count}"
 
 
 if __name__ == "__main__":
@@ -224,6 +239,7 @@ if __name__ == "__main__":
     # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
     # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
     # test__display(MECH_EMPTY, None, None)
+    # test__network(MECH_EMPTY)
     # test__network(MECH_NO_REACIONS)
     # test__display(MECH_NO_REACIONS, None, None)
     # test__display(MECH_PROPANE, ("CCC", "[OH]"), ("C3+OH=C3y1+H2O",))

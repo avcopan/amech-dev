@@ -7,7 +7,7 @@ import polars
 import polars.dataframe
 from tqdm.auto import tqdm
 
-from . import col_ as m_col_
+from . import c_ as m_col_
 
 Key = str
 Keys = Sequence[str]
@@ -236,7 +236,7 @@ def with_sorted_columns(
     df: polars.DataFrame,
     col_: Sequence[str],
     col_out_: Sequence[str] | None = None,
-    cross_sort: bool = False,
+    cross_sort: bool | str = False,
 ) -> polars.DataFrame:
     """Sort within and, optionally, across list-valued column(s).
 
@@ -244,6 +244,7 @@ def with_sorted_columns(
     :param col_: Column(s) to sort
     :param col_out_: Output column(s), if different from input
     :param cross_sort: Whether to sort across columns, as well as within them.
+        Can be Boolean column indicating where to cross-sort.
     :return: DataFrame
     """
     # Process arguments
@@ -258,15 +259,22 @@ def with_sorted_columns(
     )
 
     if cross_sort and not df.is_empty():
-        # Convert lists to structs to make the sortable
+        # Convert lists to structs to make them sortable
         df = list_to_struct(df, col_out_)
-        # Sort structs
+        # Combine columns into a temp list column for sorting
+        srt_col = m_col_.temp()
+        df = df.with_columns(polars.concat_list(col_out_).alias(srt_col))
+        # Sort
         df = df.with_columns(
-            polars.concat_list(col_out_)
-            .list.sort()
-            .list.to_struct(fields=col_out_)
-            .struct.unnest()
+            polars.when(cross_sort)
+            .then(polars.col(srt_col).list.sort())
+            .otherwise(polars.col(srt_col))
         )
+        # Unnest to recover original columns and drop temp column
+        df = df.with_columns(
+            polars.col(srt_col).list.to_struct(fields=col_out_).struct.unnest()
+        )
+        df = df.drop(srt_col)
         # Convert structs back to lists
         df = struct_to_list(df, col_out_)
 

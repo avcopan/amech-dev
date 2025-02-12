@@ -8,9 +8,10 @@ import automol
 import more_itertools as mit
 import networkx
 import pyvis
+from autochem.util import chemkin
 
-from . import data
-from .schema import Reaction, Species
+from .reac_table import Reaction
+from .spec_table import Species
 
 
 class Key:
@@ -653,9 +654,7 @@ def display(
         rcts = d[Reaction.reactants]
         prds = d[Reaction.products]
         color = d.get(Key.color)
-        mech_vis.add_edge(
-            k1, k2, title=data.reac.write_chemkin_equation(rcts, prds), color=color
-        )
+        mech_vis.add_edge(k1, k2, title=chemkin.write_equation(rcts, prds), color=color)
 
     # Generate the HTML file
     mech_vis.write_html(str(out_dir / out_name), open_browser=open_browser)

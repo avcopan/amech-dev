@@ -1,12 +1,10 @@
 """Data processing at the level of whole mechanisms."""
 
-from . import data, io, net, schema, util
+from . import io, net, reac_table, spec_table, util
 from ._mech import (
     Mechanism,
-    add_reactions,
     are_equivalent,
     combine_all,
-    common_rate_units_all,
     difference,
     display,
     display_reactions,
@@ -16,34 +14,21 @@ from ._mech import (
     enumerate_reactions,
     expand_parent_stereo,
     expand_stereo,
-    from_data,
     from_network,
     from_smiles,
     from_string,
     intersection,
     neighborhood,
     network,
-    rate_units,
     reaction_count,
-    reaction_equations,
-    reactions,
-    remove_all_reactions,
     rename,
     rename_dict,
-    select_pes,
-    set_rate_units,
-    set_reactions,
-    set_species,
-    set_thermo_temperatures,
-    species,
     species_count,
     species_names,
     string,
-    thermo_temperatures,
     update,
     with_intersection_columns,
     with_key,
-    with_rates,
     with_sort_data,
     with_species,
     without_unused_species,
@@ -53,24 +38,12 @@ __all__ = [
     # types
     "Mechanism",
     # functions
-    "from_data",
     "from_network",
     "from_smiles",
-    # getters
-    "species",
-    "reactions",
-    "thermo_temperatures",
-    "rate_units",
-    # setters
-    "set_species",
-    "set_reactions",
-    "set_thermo_temperatures",
-    "set_rate_units",
     # properties
     "species_count",
     "reaction_count",
     "species_names",
-    "reaction_equations",
     "rename_dict",
     "network",
     # add/remove reactions
@@ -78,17 +51,12 @@ __all__ = [
     "drop_self_reactions",
     # transformations
     "rename",
-    "remove_all_reactions",
-    "add_reactions",
-    "select_pes",
     "neighborhood",
     "with_species",
     "without_unused_species",
-    "with_rates",
     "with_key",
     "expand_stereo",
     # binary operations
-    "common_rate_units_all",
     "combine_all",
     "intersection",
     "difference",
@@ -111,8 +79,8 @@ __all__ = [
     "display_reactions",
     # modules
     "io",
-    "data",
     "util",
-    "schema",
     "net",
+    "reac_table",
+    "spec_table",
 ]

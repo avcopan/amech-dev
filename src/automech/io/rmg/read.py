@@ -10,10 +10,9 @@ from automol.graph import RMG_ADJACENCY_LIST
 from pyparsing import pyparsing_common as ppc
 from tqdm.auto import tqdm
 
-from ... import schema
+from ... import spec_table
 from ..._mech import Mechanism
-from ..._mech import from_data as mechanism_from_data
-from ...schema import Errors, Species
+from ...spec_table import Species
 from ...util import df_
 from ..chemkin import read as chemkin_read
 
@@ -27,7 +26,7 @@ SPECIES_DICT = pp.OneOrMore(pp.Group(SPECIES_ENTRY))("dict")
 
 def mechanism(
     rxn_inp: str, spc_inp: str, out: str | None = None, spc_out: str | None = None
-) -> tuple[Mechanism, Errors]:
+) -> Mechanism:
     """Extract the mechanism from RMG files.
 
     :param inp: An RMG mechanism (CHEMKIN format), as a file path or string
@@ -38,13 +37,9 @@ def mechanism(
     """
     spc_df = species(spc_inp)
     spc_df = chemkin_read.thermo(rxn_inp, spc_df=spc_df, out=spc_out)
-    rxn_df, err = chemkin_read.reactions(rxn_inp, out=out, spc_df=spc_df)
-    rate_units = chemkin_read.reactions_units(rxn_inp)
+    rxn_df = chemkin_read.reactions(rxn_inp, out=out, spc_df=spc_df)
     thermo_temps = chemkin_read.thermo_temperatures(rxn_inp)
-    mech = mechanism_from_data(
-        rxn_inp=rxn_df, spc_inp=spc_df, rate_units=rate_units, thermo_temps=thermo_temps
-    )
-    return mech, err
+    return Mechanism(reactions=rxn_df, species=spc_df, thermo_temps=thermo_temps)
 
 
 def species(inp: str, out: str | None = None) -> polars.DataFrame:
@@ -71,17 +66,13 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
         chis.append(automol.graph.amchi(gra))
         smis.append(automol.graph.smiles(gra))
 
-    data_dct = {
+    data = {
         Species.name: names,
         Species.spin: mults,
         Species.amchi: chis,
         Species.smiles: smis,
     }
-    spc_df = polars.DataFrame(
-        data=data_dct, schema=schema.species_types(data_dct.keys())
-    )
-
-    spc_df = schema.species_table(spc_df)
+    spc_df = spec_table.bootstrap(data)
     df_.to_csv(spc_df, out)
 
     return spc_df

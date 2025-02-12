@@ -1,18 +1,69 @@
 """Functions acting on species DataFrames."""
 
 from collections.abc import Mapping, Sequence
+from typing import Annotated, TypeAlias
 
 import automol
 import polars
+import pydantic
+from pydantic_core import core_schema
 
-from . import schema
-from .schema import Species
-from .util import col_, df_
+from .util import c_, df_, pandera_
+from .util.pandera_ import Model
 
-m_col_ = col_
+
+class Species(Model):
+    """Core species table."""
+
+    name: str
+    smiles: str
+    amchi: str
+    spin: int
+    charge: int
+    formula: polars.Struct
+
+
+class SpeciesThermo(Model):
+    """Species table with thermo."""
+
+    thermo_string: str
+
+
+class SpeciesStereo(Model):
+    """Stereo-expanded species table."""
+
+    orig_name: str
+    orig_smiles: str
+    orig_amchi: str
+
 
 ID_COLS = (Species.amchi, Species.spin, Species.charge)
-SpeciesId = tuple[*schema.types(Species, ID_COLS, py=True).values()]
+SpeciesId: TypeAlias = tuple[str, int, int]
+
+
+# validation
+def validate(
+    df: polars.DataFrame, model_: Model | Sequence[Model] = ()
+) -> polars.DataFrame:
+    """Validate species DataFrame against model(s).
+
+    :param df: DataFrame
+    :param model_: Model(s)
+    :return: DataFrame
+    """
+    models = [Species, *pandera_.normalize_model_input(model_)]
+    return pandera_.validate(models, df)
+
+
+SpeciesDataFrame_ = Annotated[
+    pydantic.SkipValidation[polars.DataFrame],
+    pydantic.BeforeValidator(polars.DataFrame),
+    pydantic.AfterValidator(validate),
+    pydantic.PlainSerializer(lambda x: polars.DataFrame(x).to_dict(as_series=False)),
+    pydantic.GetPydanticSchema(
+        lambda _, handler: core_schema.with_default_schema(handler(dict[str, list]))
+    ),
+]
 
 
 # properties
@@ -101,12 +152,12 @@ def add_missing_species_by_id(
     :return: Species DataFrame
     """
     id_col_ = ID_COLS
-    idx_col = col_.temp()
+    idx_col = c_.temp()
     spc_df = df_.with_match_index_column(spc_df, idx_col, vals_=spc_ids, col_=id_col_)
 
     miss_spc_ids = [s for i, s in enumerate(spc_ids) if i not in spc_df[idx_col]]
     miss_spc_df = polars.DataFrame(miss_spc_ids, schema=id_col_, orient="row")
-    miss_spc_df = schema.species_table(miss_spc_df)
+    miss_spc_df = bootstrap(miss_spc_df)
     return polars.concat([spc_df.drop(idx_col), miss_spc_df], how="diagonal_relaxed")
 
 
@@ -125,7 +176,7 @@ def with_key(
     """
     id_cols = ID_COLS
 
-    tmp_col = col_.temp()
+    tmp_col = c_.temp()
     if not stereo:
         spc_df = df_.map_(spc_df, Species.amchi, tmp_col, automol.amchi.without_stereo)
         id_cols = (tmp_col, *id_cols[1:])
@@ -151,7 +202,7 @@ def rename(
     :param drop_orig: Whether to drop the original names, or include them as `orig`
     :return: Species DataFrame
     """
-    col_dct = col_.to_orig(Species.name)
+    col_dct = c_.to_orig(Species.name)
     spc_df = spc_df.with_columns(polars.col(c0).alias(c) for c0, c in col_dct.items())
     expr = polars.col(Species.name)
     expr = expr.replace(names) if new_names is None else expr.replace(names, new_names)
@@ -264,3 +315,127 @@ def species_id_fill_value(
     spin = dct[Species.spin] if Species.spin in dct else automol.amchi.guess_spin(amchi)
     charge = dct[Species.charge] if Species.charge in dct else 0
     return (amchi, spin, charge)
+
+
+def expand_stereo(
+    spc_df: polars.DataFrame, enant: bool = True, strained: bool = False
+) -> polars.DataFrame:
+    """Stereoexpand species from mechanism.
+
+    :param spc_df: Species table, as DataFrame
+    :param enant: Distinguish between enantiomers?
+    :param strained: Include strained stereoisomers?
+    :return: Stereoexpanded species table
+    """
+
+    # Do species expansion based on AMChIs
+    def _expand_amchi(chi):
+        """Expand stereo for AMChIs."""
+        return automol.amchi.expand_stereo(chi, enant=enant, strained=strained)
+
+    spc_df = spc_df.rename(c_.to_orig(Species.amchi))
+    spc_df = df_.map_(
+        spc_df, c_.orig(Species.amchi), Species.amchi, _expand_amchi, bar=True
+    )
+    spc_df = spc_df.explode(polars.col(Species.amchi))
+
+    # Update species names
+    def _stereo_name(orig_name, chi):
+        """Determine stereo name from AMChI."""
+        return automol.amchi.chemkin_name(chi, root_name=orig_name)
+
+    spc_df = spc_df.rename(c_.to_orig(Species.name))
+    spc_df = df_.map_(
+        spc_df, (c_.orig(Species.name), Species.amchi), Species.name, _stereo_name
+    )
+
+    # Update SMILES strings
+    def _stereo_smiles(chi):
+        """Determine stereo smiles from AMChI."""
+        return automol.amchi.smiles(chi)
+
+    spc_df = spc_df.rename(c_.to_orig(Species.smiles))
+    spc_df = df_.map_(spc_df, Species.amchi, Species.smiles, _stereo_smiles, bar=True)
+    return spc_df
+
+
+# Bootstrapping function
+def bootstrap(
+    data: dict[str, Sequence[object]] | polars.DataFrame,
+    name_dct: dict[str, str] | None = None,
+    key: str = Species.amchi,
+) -> polars.DataFrame:
+    """Bootstrap species DataFrame from minimal data.
+
+    :param data: Data
+    :param name_dct: Names by key
+    :param key: Key for filling from dictionaries, 'smiles' or 'amchi'.
+    :return: DataFrame
+    """
+    # Make dataframe from given data
+    df = polars.DataFrame(data, strict=False)
+    df = df.rename({c: str.lower(c) for c in df.columns})
+    df = pandera_.impose_schema(Species, df)
+
+    # If empty, return early
+    if df.is_empty():
+        df = pandera_.add_missing_columns(Species, df)
+        return validate(df)
+
+    # Get spin from multiplicity if given
+    if Species.spin not in df and "mult" in df:
+        df = df.with_columns((polars.col("mult") - 1).cast(int).alias(Species.spin))
+
+    # Add missing spin column
+    df = pandera_.add_missing_columns(Species, df, Species.spin)
+
+    # Sanitize SMILES with spin tags
+    if Species.smiles in df:
+        spin_tags = {"singlet": 0, "triplet": 2}
+        for spin_tag, spin in spin_tags.items():
+            # Use spin tag to populate spin column
+            has_tag = polars.col(Species.smiles).str.contains(spin_tag)
+            needs_spin = polars.col(Species.spin).is_null()
+            spin0 = polars.col(Species.spin)
+            get_spin = polars.when(has_tag & needs_spin).then(spin).otherwise(spin0)
+            df = df.with_columns(get_spin.alias(Species.spin))
+            # Remove spin tag from smiles column
+            df = df.with_columns(polars.col(Species.smiles).str.replace(spin_tag, ""))
+
+    # Populate AMChIs from SMILES or InChI
+    if Species.amchi not in df and Species.smiles in df:
+        df = df_.map_(df, Species.smiles, Species.amchi, automol.smiles.amchi, bar=True)
+    if Species.amchi not in df and "inchi" in df:
+        df = df_.map_(df, "inchi", Species.amchi, automol.inchi.amchi, bar=True)
+
+    # Add spin where missing
+    guess_spin = polars.col(Species.amchi).map_elements(
+        automol.amchi.guess_spin, return_dtype=int
+    )
+    orig_spin = polars.col(Species.spin)
+    expr = polars.when(orig_spin.is_null()).then(guess_spin).otherwise(orig_spin)
+    df = df.with_columns(expr.alias(Species.spin))
+
+    # Populate missing columns from AMChI
+    populators = {
+        Species.name: automol.amchi.chemkin_name,
+        Species.smiles: automol.amchi.smiles,
+        Species.charge: (lambda _: 0),
+        Species.formula: automol.amchi.formula,
+    }
+    for col, pop_ in populators.items():
+        if col not in df:
+            dtype = pandera_.dtype(Species, col)
+            expr = polars.col(Species.amchi).map_elements(pop_, return_dtype=dtype)
+            df = df.with_columns(expr.alias(col))
+
+    # Replace names if given
+    if name_dct is not None:
+        assert key in (Species.smiles, Species.amchi), f"Invalid key: {key}"
+        if key == Species.smiles:
+            name_dct = {automol.smiles.amchi(k): v for k, v in name_dct.items()}
+        orig = polars.col(Species.name)
+        expr = polars.col(Species.amchi).replace_strict(name_dct, default=orig)
+        df = df.with_columns(expr.alias(Species.name))
+
+    return validate(df)

@@ -8,13 +8,12 @@ import pandas
 import polars
 
 from ..._mech import Mechanism
-from ..._mech import species as mech_species
-from ...schema import Model, Species, table_with_columns_from_models
-from ...util import df_
+from ...spec_table import Species
+from ...util import df_, pandera_
 from ..chemkin import write as chemkin_write
 
 
-class MASpecies(Model):
+class MASpecies(pandera_.Model):
     """Mechanalyzer species table."""
 
     name: str
@@ -66,7 +65,7 @@ def species(
     :return: A MechAnalyzer species dataframe
     """
     # Write species
-    spc_df = mech_species(mech)
+    spc_df = mech.species
     spc_df = df_.map_(
         spc_df, Species.amchi, MASpecies.inchi, automol.amchi.chi_, bar=True
     )
@@ -81,9 +80,9 @@ def species(
         bar=True,
     )
     spc_df = spc_df.with_columns((polars.col(Species.spin) + 1).alias(MASpecies.mult))
-    spc_df = table_with_columns_from_models(
-        spc_df, model_=[MASpecies], keep_extra=False
-    )
+    spc_df = pandera_.impose_schema(MASpecies, spc_df)
+    spc_df = pandera_.validate(MASpecies, spc_df)
+    spc_df = pandera_.drop_extra_columns(MASpecies, spc_df)
     if out is not None:
         df_.to_csv(spc_df, out, quote_char="'")
 

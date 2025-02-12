@@ -7,9 +7,8 @@ from pathlib import Path
 import pandas
 import polars
 
+from ... import spec_table
 from ..._mech import Mechanism
-from ..._mech import from_data as mechanism_from_data
-from ...schema import Errors, species_table
 from ...util import df_
 from ..chemkin import read as chemkin_read
 
@@ -19,7 +18,7 @@ def mechanism(
     spc_inp: pandas.DataFrame | str | Path,
     rxn_out: str | None = None,
     spc_out: str | None = None,
-) -> tuple[Mechanism, Errors]:
+) -> Mechanism:
     """Extract the mechanism from MechAnalyzer files.
 
     :param rxn_inp: A mechanism (CHEMKIN format), as a file path or string
@@ -29,9 +28,8 @@ def mechanism(
     :return: The mechanism dataclass
     """
     spc_df = species(spc_inp, out=spc_out)
-    rxn_df, err = chemkin_read.reactions(rxn_inp, out=rxn_out, spc_df=spc_df)
-    mech = mechanism_from_data(rxn_inp=rxn_df, spc_inp=spc_df)
-    return mech, err
+    rxn_df = chemkin_read.reactions(rxn_inp, out=rxn_out, spc_df=spc_df)
+    return Mechanism(reactions=rxn_df, species=spc_df)
 
 
 def species(
@@ -50,7 +48,7 @@ def species(
         assert isinstance(inp, pandas.DataFrame), f"Invalid species input: {inp}"
         spc_df = polars.from_pandas(inp)
 
-    spc_df = species_table(spc_df)
+    spc_df = spec_table.bootstrap(spc_df)
     df_.to_csv(spc_df, out)
 
     return spc_df
