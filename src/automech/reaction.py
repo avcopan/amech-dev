@@ -13,8 +13,8 @@ import pydantic
 from autochem.util import chemkin
 from pydantic_core import core_schema
 
-from . import spec_table
-from .spec_table import Species
+from . import species
+from .species import Species
 from .util import c_, df_, pandera_
 from .util.pandera_ import Model
 
@@ -127,7 +127,7 @@ def reagents(rxn_df: polars.DataFrame) -> list[list[str]]:
     return sorted(mit.unique_everseen(rcts + prds))
 
 
-def species(rxn_df: polars.DataFrame) -> list[str]:
+def species_names(rxn_df: polars.DataFrame) -> list[str]:
     """Get species in reactions DataFrame.
 
     :param rxn_df: Reactions DataFrame
@@ -269,7 +269,7 @@ def with_key(
     # If requested, use species keys instead of names
     if spc_df is not None:
         id_col = c_.temp()
-        spc_df = spec_table.with_key(spc_df, id_col, stereo=stereo)
+        spc_df = species.with_key(spc_df, id_col, stereo=stereo)
         rxn_df = translate_reagents(
             rxn_df,
             spc_df[Species.name],

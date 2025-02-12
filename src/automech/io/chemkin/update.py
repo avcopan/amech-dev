@@ -4,7 +4,7 @@ from collections.abc import Sequence
 
 import polars
 
-from ... import reac_table
+from ... import reaction
 from ..._mech import Mechanism
 from ...util.io_ import TextInput
 from . import read
@@ -36,5 +36,7 @@ def rates(mech: Mechanism, inp_: TextInput | Sequence[TextInput]) -> Mechanism:
 
     mech = mech.model_copy()
     rxn_dfs = [read.reactions(inp, spc_df=mech.species) for inp in inp_]
-    mech.reactions = reac_table.update(mech.reactions, polars.concat(rxn_dfs, how="vertical_relaxed"))
+    mech.reactions = reaction.update(
+        mech.reactions, polars.concat(rxn_dfs, how="vertical_relaxed")
+    )
     return mech

@@ -6,8 +6,8 @@ import pytest
 from automol.graph import enum
 
 import automech
-from automech.reac_table import ReactionSorted
-from automech.spec_table import Species
+from automech.reaction import ReactionSorted
+from automech.species import Species
 from automech.util import df_
 
 DATA_PATH = Path(__file__).parent / "data"
@@ -226,7 +226,7 @@ def test__sanitize(rxn_file_name, spc_file_name, rxn_count, err_count):
     rxn_path = DATA_PATH / rxn_file_name
     spc_path = DATA_PATH / spc_file_name
     mech = automech.io.mechanalyzer.read.mechanism(rxn_path, spc_path)
-    rxn_df, err_df = automech.reac_table.sanitize(mech.reactions, spc_df=mech.species)
+    rxn_df, err_df = automech.reaction.sanitize(mech.reactions, spc_df=mech.species)
     assert df_.count(rxn_df) == rxn_count, f"{df_.count(rxn_df)} != {rxn_count}"
     assert df_.count(err_df) == err_count, f"{df_.count(err_df)} != {err_count}"
 

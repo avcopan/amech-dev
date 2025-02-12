@@ -11,10 +11,11 @@ from autochem import unit_
 from autochem.unit_ import Units
 from pyparsing import common as ppc
 
-from ... import reac_table, spec_table
+from ... import reaction
+from ... import species as m_species
 from ..._mech import Mechanism
-from ...reac_table import Reaction, ReactionRate
-from ...spec_table import Species, SpeciesThermo
+from ...reaction import Reaction, ReactionRate
+from ...species import Species, SpeciesThermo
 from ...util import df_, io_
 from ...util.io_ import TextInput, TextOutput
 
@@ -109,7 +110,7 @@ def reactions(
         ReactionRate.reversible: [r.reversible for r in rxns],
         ReactionRate.rate: [r.rate_constant.model_dump() for r in rxns],
     }
-    rxn_df = reac_table.bootstrap(data, spc_df=spc_df)
+    rxn_df = reaction.bootstrap(data, spc_df=spc_df)
 
     df_.to_csv(rxn_df, out)
 
@@ -167,7 +168,7 @@ def species(inp: TextInput, out: TextOutput = None) -> polars.DataFrame:
         for r in parser.parse_string(spc_block_str)
     ]
     print(f"data = {data}")
-    spc_df = spec_table.bootstrap(data)
+    spc_df = m_species.bootstrap(data)
     spc_df = thermo(inp, spc_df=spc_df)
 
     df_.to_csv(spc_df, out)
@@ -215,7 +216,7 @@ def thermo(
     }
     therm_df = polars.DataFrame(data)
     if spc_df is not None:
-        therm_df = spec_table.left_update(spc_df, therm_df, key_col_=Species.name)
+        therm_df = m_species.left_update(spc_df, therm_df, key_col_=Species.name)
 
     df_.to_csv(therm_df, out)
 

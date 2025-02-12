@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import automech
-from automech.spec_table import SpeciesThermo
+from automech.species import SpeciesThermo
 
 DATA_PATH = Path(__file__).parent / "data"
 TEMP_PATH = Path(tempfile.gettempdir())

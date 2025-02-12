@@ -10,8 +10,8 @@ import networkx
 import pyvis
 from autochem.util import chemkin
 
-from .reac_table import Reaction
-from .spec_table import Species
+from .reaction import Reaction
+from .species import Species
 
 
 class Key:

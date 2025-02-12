@@ -10,10 +10,10 @@ from autochem import rate, unit_
 from autochem.unit_ import UNITS
 from autochem.util import chemkin
 
-from ... import reac_table
+from ... import reaction
 from ..._mech import Mechanism
-from ...reac_table import ReactionSorted
-from ...spec_table import Species, SpeciesThermo
+from ...reaction import ReactionSorted
+from ...species import Species, SpeciesThermo
 from ...util import c_, pandera_
 from .read import KeyWord
 
@@ -117,11 +117,11 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
 
     # Identify duplicates
     dup_col = c_.temp()
-    rxn_df = reac_table.with_duplicate_column(rxn_df, dup_col)
+    rxn_df = reaction.with_duplicate_column(rxn_df, dup_col)
 
     # Add reaction objects
     obj_col = c_.temp()
-    rxn_df = reac_table.with_rate_objects(rxn_df, obj_col, fill=True)
+    rxn_df = reaction.with_rate_objects(rxn_df, obj_col, fill=True)
 
     # Add reaction equations to determine apppropriate width
     eq_col = c_.temp()
