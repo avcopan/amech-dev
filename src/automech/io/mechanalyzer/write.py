@@ -8,12 +8,12 @@ import pandas
 import polars
 
 from ..._mech import Mechanism
-from ...schema_old import Model, Species, table_with_columns_from_models
-from ...util import df_
+from ...spec_table import Species
+from ...util import df_, pandera_
 from ..chemkin import write as chemkin_write
 
 
-class MASpecies(Model):
+class MASpecies(pandera_.Model):
     """Mechanalyzer species table."""
 
     name: str
@@ -80,9 +80,9 @@ def species(
         bar=True,
     )
     spc_df = spc_df.with_columns((polars.col(Species.spin) + 1).alias(MASpecies.mult))
-    spc_df = table_with_columns_from_models(
-        spc_df, model_=[MASpecies], keep_extra=False
-    )
+    spc_df = pandera_.impose_schema(MASpecies, spc_df)
+    spc_df = pandera_.validate(MASpecies, spc_df)
+    spc_df = pandera_.drop_extra_columns(MASpecies, spc_df)
     if out is not None:
         df_.to_csv(spc_df, out, quote_char="'")
 

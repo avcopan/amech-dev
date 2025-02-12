@@ -10,7 +10,7 @@ import polars
 from polars.datatypes import Struct
 from pydantic import BaseModel, ConfigDict
 
-import automech.util.col_
+import automech.util.c_
 from automech.util import df_
 
 Model = pa.DataFrameModel
@@ -386,7 +386,7 @@ def reaction_table_with_formula(
     """
     df = _reaction_table_with_formula(df, spc_df=spc_df)
     if check and spc_df is not None:
-        col_tmp = automech.util.col_.temp()
+        col_tmp = automech.util.c_.temp()
 
         df = _reaction_table_with_formula(
             df, spc_df=spc_df, col_in=Reaction.products, col_out=col_tmp
@@ -430,7 +430,7 @@ def _reaction_table_with_formula(
     if spc_df is None:
         df = df.with_columns(polars.lit({"H": None}).alias(col_out))
     else:
-        col_tmp = automech.util.col_.temp()
+        col_tmp = automech.util.c_.temp()
         spc_df = species_table(spc_df)
         names = spc_df[Species.name]
         formulas = spc_df[Species.formula]

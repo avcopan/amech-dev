@@ -7,8 +7,8 @@ from pathlib import Path
 import pandas
 import polars
 
+from ... import spec_table
 from ..._mech import Mechanism
-from ...schema_old import species_table
 from ...util import df_
 from ..chemkin import read as chemkin_read
 
@@ -48,7 +48,7 @@ def species(
         assert isinstance(inp, pandas.DataFrame), f"Invalid species input: {inp}"
         spc_df = polars.from_pandas(inp)
 
-    spc_df = species_table(spc_df)
+    spc_df = spec_table.bootstrap(spc_df)
     df_.to_csv(spc_df, out)
 
     return spc_df

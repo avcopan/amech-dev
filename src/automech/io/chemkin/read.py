@@ -11,14 +11,10 @@ from autochem import unit_
 from autochem.unit_ import Units
 from pyparsing import common as ppc
 
-from ... import schema_old, spec_table
+from ... import reac_table, spec_table
 from ..._mech import Mechanism
-from ...schema_old import (
-    Reaction,
-    ReactionRate,
-    Species,
-    SpeciesThermo,
-)
+from ...reac_table import Reaction, ReactionRate
+from ...spec_table import Species, SpeciesThermo
 from ...util import df_, io_
 from ...util.io_ import TextInput, TextOutput
 
@@ -107,20 +103,13 @@ def reactions(
     rxn_strs = list(map("\n".join, mit.split_before(line_iter, _is_reaction_line)))
     rxns = [autochem.rate.from_chemkin_string(r, units=units0) for r in rxn_strs]
 
-    data_dct = {
+    data = {
         Reaction.reactants: [r.reactants for r in rxns],
         Reaction.products: [r.products for r in rxns],
         ReactionRate.reversible: [r.reversible for r in rxns],
         ReactionRate.rate: [r.rate_constant.model_dump() for r in rxns],
     }
-    schema_dct = schema_old.types([Reaction, ReactionRate], keys=data_dct.keys())
-    rxn_df = polars.DataFrame(
-        data=data_dct, schema=schema_dct, infer_schema_length=None
-    )
-
-    rxn_df = schema_old.reaction_table(
-        rxn_df, spc_df=spc_df, model_=[Reaction, ReactionRate], fail_on_error=False
-    )
+    rxn_df = reac_table.bootstrap(data, spc_df=spc_df)
 
     df_.to_csv(rxn_df, out)
 
@@ -173,16 +162,13 @@ def species(inp: TextInput, out: TextOutput = None) -> polars.DataFrame:
 
     spc_block_str = species_block(inp, comments=True)
 
-    data_lst = [
+    data = [
         {Species.name: r.get("name"), **dict(r.get("values").as_list())}
         for r in parser.parse_string(spc_block_str)
     ]
-    spc_df = polars.DataFrame(data_lst)
-
-    therm_df = thermo(inp, spc_df=spc_df)
-    spc_df = spc_df if therm_df is None else therm_df
-
-    spc_df = schema_old.species_table(spc_df)
+    print(f"data = {data}")
+    spc_df = spec_table.bootstrap(data)
+    spc_df = thermo(inp, spc_df=spc_df)
 
     df_.to_csv(spc_df, out)
 
@@ -212,7 +198,7 @@ def species_names(inp: TextInput) -> list[str]:
 # therm
 def thermo(
     inp: TextInput, spc_df: polars.DataFrame | None = None, out: TextOutput = None
-) -> polars.DataFrame:
+) -> polars.DataFrame | None:
     """Get thermodynamic data as a dataframe.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -221,7 +207,7 @@ def thermo(
     """
     therm_dct = thermo_entry_dict(inp)
     if therm_dct is None:
-        return None
+        return spc_df
 
     data = {
         Species.name: list(therm_dct.keys()),

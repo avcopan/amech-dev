@@ -4,32 +4,29 @@ import functools
 import itertools
 from collections.abc import Callable, Collection, Mapping, Sequence
 
+import autochem
 import automol
 import more_itertools as mit
 import polars
 import pydantic
 
-import autochem
-
-from . import data, reac_table, schema, schema_old, spec_table
 from . import net as net_
-from .schema.species import SpeciesDataFrame_
-from .schema_old import (
+from . import reac_table, spec_table
+from .reac_table import (
     Reaction,
+    ReactionDataFrame_,
     ReactionRate,
     ReactionSorted,
     ReactionStereo,
-    Species,
-    SpeciesStereo,
 )
-from .util import col_, df_
-from .util.type_ import DataFrame_
+from .spec_table import Species, SpeciesDataFrame_, SpeciesStereo
+from .util import c_, df_, pandera_
 
 
 class Mechanism(pydantic.BaseModel):
     """Chemical kinetic mechanism."""
 
-    reactions: DataFrame_
+    reactions: ReactionDataFrame_
     species: SpeciesDataFrame_
     thermo_temps: tuple[float, float, float] | None = None
 
@@ -45,26 +42,17 @@ def from_network(net: net_.Network) -> Mechanism:
     )
     rxn_data = [d for *_, d in net.edges.data()]
 
-    spc_df = (
-        polars.DataFrame([])
-        if not spc_data
-        else (
-            polars.DataFrame(spc_data)
-            .sort(net_.Key.id)
-            .unique(net_.Key.id, maintain_order=True)
-        )
-    )
-    rxn_df = (
-        polars.DataFrame([])
-        if not rxn_data
-        else (
-            polars.DataFrame(rxn_data)
-            .sort(net_.Key.id)
-            .unique(net_.Key.id, maintain_order=True)
-        )
-    )
-    spc_df = spc_df.drop(net_.Key.id, strict=False)
-    rxn_df = rxn_df.drop(net_.Key.id, strict=False)
+    spc_df = pandera_.empty(Species) if not spc_data else (polars.DataFrame(spc_data))
+    rxn_df = pandera_.empty(Reaction) if not rxn_data else (polars.DataFrame(rxn_data))
+
+    def _postprocess(df: polars.DataFrame) -> polars.DataFrame:
+        col = net_.Key.id
+        if col not in df:
+            return df
+        return df.sort(col).unique(col, maintain_order=True).drop(col, strict=False)
+
+    spc_df = _postprocess(spc_df)
+    rxn_df = _postprocess(rxn_df)
     return Mechanism(reactions=rxn_df, species=spc_df)
 
 
@@ -87,14 +75,14 @@ def from_smiles(
     :return: Mechanism
     """
     # Add in any missing species from reaction SMILES
-    spc_smis_by_rxn = [
-        rs + ps
-        for (rs, ps) in map(automol.smiles.reaction_reactants_and_products, rxn_smis)
-    ]
-    spc_smis = list(mit.unique_everseen(itertools.chain(spc_smis, *spc_smis_by_rxn)))
+    rct_smis = list(map(automol.smiles.reaction_reactants, rxn_smis))
+    prd_smis = list(map(automol.smiles.reaction_products, rxn_smis))
+    spc_smis = list(
+        mit.unique_everseen(itertools.chain(spc_smis, *rct_smis, *prd_smis))
+    )
 
     # Build species dataframe
-    spc_df = schema.species.bootstrap(
+    spc_df = spec_table.bootstrap(
         {Species.smiles: spc_smis}, name_dct=name_dct, key=Species.smiles
     )
 
@@ -104,16 +92,8 @@ def from_smiles(
 
     # Build reactions dataframe
     trans_dct = df_.lookup_dict(spc_df, Species.smiles, Species.name)
-    rxn_smis_lst = list(map(automol.smiles.reaction_reactants_and_products, rxn_smis))
-    data_lst = [
-        {
-            Reaction.reactants: list(map(trans_dct.get, rs)),
-            Reaction.products: list(map(trans_dct.get, ps)),
-        }
-        for rs, ps in rxn_smis_lst
-    ]
-    dt = schema_old.reaction_types([Reaction.reactants, Reaction.products])
-    rxn_df = polars.DataFrame(data=data_lst, schema=dt)
+    data = {Reaction.reactants: rct_smis, Reaction.products: prd_smis}
+    rxn_df = reac_table.bootstrap(data, name_dct=trans_dct, spc_df=spc_df)
 
     mech = Mechanism(reactions=rxn_df, species=spc_df)
     return mech if src_mech is None else left_update(mech, src_mech)
@@ -209,14 +189,14 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
     match_cols = [Species.amchi, Species.spin, Species.charge]
 
     # Read in species and names
-    spc1_df = mech1.species.rename(col_.to_orig(Species.name))
+    spc1_df = mech1.species.rename(c_.to_orig(Species.name))
     spc2_df = mech2.species.select([Species.name, *match_cols])
 
     # Get names from first mechanism that are included/excluded in second
     incl_spc_df = spc1_df.join(spc2_df, on=match_cols, how="inner")
     excl_spc_df = spc1_df.join(spc2_df, on=match_cols, how="anti")
 
-    orig_col = col_.orig(Species.name)
+    orig_col = c_.orig(Species.name)
     name_dct = df_.lookup_dict(incl_spc_df, orig_col, Species.name)
     missing_names = excl_spc_df.get_column(orig_col).to_list()
     return name_dct, missing_names
@@ -232,7 +212,7 @@ def network(mech: Mechanism) -> net_.Network:
     rxn_df = mech.reactions
 
     # Double-check that reagents are sorted
-    rxn_df = schema_old.reaction_table_with_sorted_reagents(rxn_df)
+    rxn_df = reac_table.with_sorted_reagents(rxn_df, cross_sort=False)
 
     # Add species and reaction indices
     spc_df = df_.with_index(spc_df, net_.Key.id)
@@ -294,7 +274,7 @@ def apply_network_function(
     """
     mech_ = mech.model_copy()
 
-    col_idx = col_.temp()
+    col_idx = c_.temp()
     mech_.species = df_.with_index(mech_.species, col=col_idx)
     mech_.reactions = df_.with_index(mech_.reactions, col=col_idx)
     net = network(mech_)
@@ -365,7 +345,7 @@ def drop_duplicate_reactions(mech: Mechanism) -> Mechanism:
     """
     mech = mech.model_copy()
 
-    col_tmp = col_.temp()
+    col_tmp = c_.temp()
     mech.reactions = reac_table.with_key(mech.reactions, col=col_tmp)
     mech.reactions = mech.reactions.unique(col_tmp, maintain_order=True)
     mech.reactions = mech.reactions.drop(col_tmp)
@@ -499,7 +479,7 @@ def expand_stereo(
     # Add reactant and product AMChIs
     rct_col = Reaction.reactants
     prd_col = Reaction.products
-    temp_dct = col_.to_([rct_col, prd_col], col_.temp())
+    temp_dct = c_.to_([rct_col, prd_col], c_.temp())
     mech.reactions = reac_table.translate_reagents(
         mech.reactions,
         trans=species0[Species.name],
@@ -509,13 +489,13 @@ def expand_stereo(
     )
 
     # Add "orig" prefix to current reactant and product columns
-    orig_dct = col_.to_orig([rct_col, prd_col])
+    orig_dct = c_.to_orig([rct_col, prd_col])
     mech.reactions = mech.reactions.drop(orig_dct.values(), strict=False)
     mech.reactions = mech.reactions.rename(orig_dct)
 
     # Define expansion function
     name_dct: dict = df_.lookup_dict(
-        mech.species, (col_.orig(Species.name), Species.amchi), Species.name
+        mech.species, (c_.orig(Species.name), Species.amchi), Species.name
     )
 
     def _expand_reaction(rchi0s, pchi0s, rname0s, pname0s):
@@ -588,7 +568,7 @@ def intersection(
     :param stereo: Whether to consider stereochemistry
     :return: Mechanism intersection
     """
-    col = col_.temp()
+    col = c_.temp()
     mech1, mech2 = with_intersection_columns(mech1, mech2, col=col, stereo=stereo)
     mech = mech2 if right else mech1
     mech = mech.model_copy()
@@ -643,7 +623,7 @@ def update(mech1: Mechanism, mech2: Mechanism, keep_left: bool = False) -> Mecha
     mech1, mech2 = (mech2, mech1) if keep_left else (mech1, mech2)
 
     # Get intersection information for the first mechanism
-    col = col_.temp()
+    col = c_.temp()
     mech1, _ = with_intersection_columns(mech1, mech2, col=col)
     mech = mech1.model_copy()
 
@@ -675,7 +655,7 @@ def left_update(
     mech = mech1.model_copy()
 
     col0 = Species.name
-    col = col_.prefix(col0, col_.temp())
+    col = c_.prefix(col0, c_.temp())
     mech.species = mech.species.with_columns(polars.col(col0).alias(col))
     mech.species = spec_table.left_update(
         mech.species, mech2.species, drop_orig=drop_orig
@@ -704,7 +684,7 @@ def with_intersection_columns(
     mech1 = mech1.model_copy()
     mech2 = mech2.model_copy()
 
-    tmp_col = col_.temp()
+    tmp_col = c_.temp()
     mech1 = with_key(mech1, col=tmp_col, stereo=stereo)
     mech2 = with_key(mech2, col=tmp_col, stereo=stereo)
 
@@ -746,13 +726,13 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
 
     # 1. Species table
     #   a. Add stereo columns to par_mech species table
-    col_dct = col_.to_orig([Species.name, Species.smiles, Species.amchi])
+    col_dct = c_.to_orig([Species.name, Species.smiles, Species.amchi])
     mech.species = mech.species.rename(col_dct)
 
     #   b. Group by original names and isolate expanded stereoisomers
     name_col = Species.name
-    name_col0 = col_.orig(Species.name)
-    sub_mech.species = schema_old.species_table(sub_mech.species, model_=SpeciesStereo)
+    name_col0 = c_.orig(Species.name)
+    sub_mech.species = spec_table.validate(sub_mech.species, SpeciesStereo)
     sub_mech.species = sub_mech.species.select(*col_dct.keys(), *col_dct.values())
     sub_mech.species = sub_mech.species.group_by(name_col0).agg(polars.all())
 
@@ -775,7 +755,7 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     mech.reactions = reac_table.with_rates(mech.reactions)
 
     mech.reactions = mech.reactions.with_columns(
-        **col_.from_orig([Reaction.reactants, Reaction.products, ReactionRate.rate])
+        **c_.from_orig([Reaction.reactants, Reaction.products, ReactionRate.rate])
     )
     needs_exp = (
         polars.concat_list(Reaction.reactants, Reaction.products)
@@ -794,7 +774,7 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
             [r.rate_constant.model_dump() for r in rates],
         )
 
-    obj_col = col_.temp()
+    obj_col = c_.temp()
     cols = [Reaction.reactants, Reaction.products, ReactionRate.rate]
     dtypes = list(map(polars.List, map(exp_rxn_df.schema.get, cols)))
     exp_rxn_df = reac_table.with_rate_objects(exp_rxn_df, col=obj_col)
@@ -804,7 +784,7 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
 
     if not has_rate:
         mech.reactions = reac_table.without_rates(mech.reactions)
-        mech.reactions = mech.reactions.drop(col_.orig(ReactionRate.rate))
+        mech.reactions = mech.reactions.drop(c_.orig(ReactionRate.rate))
 
     return mech
 
@@ -925,7 +905,7 @@ def with_sort_data(mech: Mechanism) -> Mechanism:
     mech.species = spec_table.sort_by_formula(mech.species)
 
     # Sort reactions by shape and by reagent names
-    idx_col = col_.temp()
+    idx_col = c_.temp()
     mech.reactions = mech.reactions.sort(
         polars.col(Reaction.reactants).list.len(),
         polars.col(Reaction.products).list.len(),
@@ -945,7 +925,7 @@ def with_sort_data(mech: Mechanism) -> Mechanism:
         }
         for i, (p, s, c) in srt_dct.items()
     ]
-    srt_schema = {idx_col: polars.UInt32, **schema_old.types([ReactionSorted])}
+    srt_schema = {idx_col: polars.UInt32, **pandera_.schema(ReactionSorted)}
     srt_df = polars.DataFrame(srt_data, schema=srt_schema)
 
     # Add sort data to reactions dataframe and sort
@@ -1076,8 +1056,8 @@ def display_reactions(
     mech: Mechanism,
     eqs: Collection | None = None,
     stereo: bool = True,
-    keys: Sequence[str] = (),
-    spc_keys: Sequence[str] = (Species.smiles,),
+    cols: Sequence[str] = (),
+    spc_cols: Sequence[str] = (Species.smiles,),
 ):
     """Display reactions in mechanism.
 
@@ -1092,33 +1072,27 @@ def display_reactions(
     spc_df = mech.species
     rxn_df = mech.reactions
 
-    chi_dct = df_.lookup_dict(spc_df, Species.name, Species.amchi)
-    trans_dcts = {k: df_.lookup_dict(spc_df, Species.name, k) for k in spc_keys}
-
-    obj_col, eq_col = col_.temp(), col_.temp()
-    rxn_df = reac_table.with_rate_objects(rxn_df, col=obj_col)
-    rxn_df = rxn_df.with_columns(
-        polars.col(obj_col)
-        .map_elements(autochem.rate.chemkin_equation, return_dtype=polars.String)
-        .alias(eq_col)
-    )
-
     if eqs is not None:
-        # eq_df = polars.DataFrame({})
-        eqs = list(map(data.reac.standardize_chemkin_equation, eqs))
-        rxn_df = rxn_df.filter(polars.col("eq").is_in(eqs))
+        tmp_col = c_.temp()
+        rxn_df = reac_table.with_equation_match_column(rxn_df, tmp_col, eqs)
+        rxn_df = rxn_df.filter(tmp_col).drop(tmp_col)
 
-    def _display_reaction(eq, *vals):
+    chi_dct = df_.lookup_dict(spc_df, Species.name, Species.amchi)
+    trans_dcts = {k: df_.lookup_dict(spc_df, Species.name, k) for k in spc_cols}
+
+    def _display_reaction(rcts, prds, *vals):
         """Add a node to network."""
         # Print requested information
-        for key, val in zip(keys, vals, strict=True):
-            print(f"{key}: {val}")
+        for col, val in zip(cols, vals, strict=True):
+            print(f"{col}: {val}")
 
         # Display reaction
-        rchis, pchis, *_ = data.reac.read_chemkin_equation(eq, trans_dct=chi_dct)
+        rchis = list(map(chi_dct.get, rcts))
+        pchis = list(map(chi_dct.get, prds))
 
         for key, trans_dct in trans_dcts.items():
-            rvals, pvals, *_ = data.reac.read_chemkin_equation(eq, trans_dct=trans_dct)
+            rvals = list(map(trans_dct.get, rcts))
+            pvals = list(map(trans_dct.get, prds))
             print(f"Species `name`=>`{key}` translation")
             print(f"  reactants = {rvals}")
             print(f"  products = {pvals}")
@@ -1129,4 +1103,5 @@ def display_reactions(
             automol.amchi.display_reaction(rchis, pchis, stereo=stereo)
 
     # Display requested reactions
-    df_.map_(rxn_df, ("eq", *keys), None, _display_reaction)
+    cols_ = [Reaction.reactants, Reaction.products, *cols]
+    df_.map_(rxn_df, cols_, None, _display_reaction)

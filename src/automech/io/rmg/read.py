@@ -10,9 +10,9 @@ from automol.graph import RMG_ADJACENCY_LIST
 from pyparsing import pyparsing_common as ppc
 from tqdm.auto import tqdm
 
-from ... import schema_old
+from ... import spec_table
 from ..._mech import Mechanism
-from ...schema_old import Species
+from ...spec_table import Species
 from ...util import df_
 from ..chemkin import read as chemkin_read
 
@@ -66,17 +66,13 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
         chis.append(automol.graph.amchi(gra))
         smis.append(automol.graph.smiles(gra))
 
-    data_dct = {
+    data = {
         Species.name: names,
         Species.spin: mults,
         Species.amchi: chis,
         Species.smiles: smis,
     }
-    spc_df = polars.DataFrame(
-        data=data_dct, schema=schema_old.species_types(data_dct.keys())
-    )
-
-    spc_df = schema_old.species_table(spc_df)
+    spc_df = spec_table.bootstrap(data)
     df_.to_csv(spc_df, out)
 
     return spc_df

@@ -7,7 +7,7 @@ import polars
 import polars.dataframe
 from tqdm.auto import tqdm
 
-from . import col_ as m_col_
+from . import c_ as m_col_
 
 Key = str
 Keys = Sequence[str]

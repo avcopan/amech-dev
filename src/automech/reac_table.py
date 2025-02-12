@@ -1,23 +1,92 @@
 """Functions acting on reactions DataFrames."""
 
+import functools
 import itertools
 from collections.abc import Mapping, Sequence
+from typing import Annotated, TypeAlias
 
 import autochem
 import automol
 import more_itertools as mit
 import polars
+import pydantic
+from autochem.util import chemkin
+from pydantic_core import core_schema
 
-from . import schema_old, spec_table
-from .schema_old import Reaction, ReactionRate, Species
-from .util import col_, df_
-
-m_col_ = col_
+from . import spec_table
+from .spec_table import Species
+from .util import c_, df_, pandera_
+from .util.pandera_ import Model
 
 DEFAULT_REAGENT_SEPARATOR = " + "
 
+
+class Reaction(Model):
+    """Core reaction table."""
+
+    reactants: list[str]
+    products: list[str]
+    formula: polars.Struct
+
+
+class ReactionRate(Model):
+    """Reaction table with rate."""
+
+    reversible: bool
+    rate: polars.Struct
+
+
+class ReactionSorted(Model):
+    """Reaction table with sort information."""
+
+    pes: int
+    subpes: int
+    channel: int
+
+
+class ReactionStereo(Model):
+    """Stereo-expanded reaction table."""
+
+    amchi: str
+    orig_reactants: str
+    orig_products: str
+
+
+class ReactionError(Model):
+    """Reaction error table."""
+
+    is_missing_species: bool
+    has_unbalanced_formula: bool
+
+
 ID_COLS = (Reaction.reactants, Reaction.products)
-ReactionId = tuple[*schema_old.types(Reaction, ID_COLS, py=True).values()]
+ReactionId: TypeAlias = tuple[list[str], list[str]]
+
+
+# validation
+def validate(
+    df: polars.DataFrame, model_: Model | Sequence[Model] = (), sort: bool = True
+) -> polars.DataFrame:
+    """Validate reactions DataFrame against model(s).
+
+    :param df: DataFrame
+    :param model_: Model(s)
+    :return: DataFrame
+    """
+    models = [Reaction, *pandera_.normalize_model_input(model_)]
+    df = pandera_.validate(models, df)
+    return df
+
+
+ReactionDataFrame_ = Annotated[
+    pydantic.SkipValidation[polars.DataFrame],
+    pydantic.BeforeValidator(polars.DataFrame),
+    pydantic.AfterValidator(validate),
+    pydantic.PlainSerializer(lambda x: polars.DataFrame(x).to_dict(as_series=False)),
+    pydantic.GetPydanticSchema(
+        lambda _, handler: core_schema.with_default_schema(handler(dict[str, list]))
+    ),
+]
 
 
 # properties
@@ -90,7 +159,7 @@ def update(rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame) -> polars.Dat
     :return: Reaction DataFrame
     """
     # Add reaction keys
-    tmp_col = col_.temp()
+    tmp_col = c_.temp()
     rxn_df = with_key(rxn_df, tmp_col)
     src_rxn_df = with_key(src_rxn_df, tmp_col)
 
@@ -110,7 +179,7 @@ def left_update(
     :return: Reaction DataFrame
     """
     # Add reaction keys
-    tmp_col = col_.temp()
+    tmp_col = c_.temp()
     rxn_df = with_key(rxn_df, tmp_col)
     src_rxn_df = with_key(src_rxn_df, tmp_col)
 
@@ -133,21 +202,20 @@ def add_missing_reactions_by_id(
     rxn_ids = normalize_reaction_ids(rxn_ids)
 
     # Sort reagents
-    id_cols0 = ID_COLS
-    id_cols = col_.prefix(id_cols0, col_.temp())
+    id_cols = c_.prefix(ID_COLS, c_.temp())
     rxn_df = with_sorted_reagents(
-        rxn_df, col_=id_cols0, col_out_=id_cols, cross_sort=True
+        rxn_df, col_=ID_COLS, col_out_=id_cols, cross_sort=True
     )
 
     # Add match index column
-    idx_col = col_.temp()
+    idx_col = c_.temp()
     rxn_df = df_.with_match_index_column(rxn_df, idx_col, vals_=rxn_ids, col_=id_cols)
     rxn_df = rxn_df.drop(id_cols)
 
     # Append missing reactions to reactions DataFrame
     miss_rxn_ids = [s for i, s in enumerate(rxn_ids) if i not in rxn_df[idx_col]]
-    miss_rxn_df = polars.DataFrame(miss_rxn_ids, schema=id_cols0, orient="row")
-    miss_rxn_df, *_ = schema_old.reaction_table_with_errors(miss_rxn_df)
+    miss_rxn_df = polars.DataFrame(miss_rxn_ids, orient="row")
+    miss_rxn_df = validate(miss_rxn_df)
     return polars.concat([rxn_df.drop(idx_col), miss_rxn_df], how="diagonal_relaxed")
 
 
@@ -159,7 +227,7 @@ def drop_self_reactions(rxn_df: polars.DataFrame) -> polars.DataFrame:
     """
     rcol0 = Reaction.reactants
     pcol0 = Reaction.products
-    rcol, pcol = col_.prefix((rcol0, pcol0), col_.temp())
+    rcol, pcol = c_.prefix((rcol0, pcol0), c_.temp())
     rxn_df = with_sorted_reagents(
         rxn_df, col_=(rcol0, pcol0), col_out_=(rcol, pcol), cross_sort=False
     )
@@ -192,12 +260,12 @@ def with_key(
     """
     rct_col0 = Reaction.reactants
     prd_col0 = Reaction.products
-    rct_col = col_.temp()
-    prd_col = col_.temp()
+    rct_col = c_.temp()
+    prd_col = c_.temp()
 
     # If requested, use species keys instead of names
     if spc_df is not None:
-        id_col = col_.temp()
+        id_col = c_.temp()
         spc_df = spec_table.with_key(spc_df, id_col, stereo=stereo)
         rxn_df = translate_reagents(
             rxn_df,
@@ -231,7 +299,7 @@ def with_duplicate_column(rxn_df: polars.DataFrame, col: str) -> polars.DataFram
     :param col: Duplicate column
     :return: Reactions DataFrame
     """
-    tmp_col = col_.temp()
+    tmp_col = c_.temp()
     cross_sort = ReactionRate.reversible if ReactionRate.reversible in rxn_df else True
     rxn_df = with_key(rxn_df, col=tmp_col, cross_sort=cross_sort)
     rxn_df = rxn_df.with_columns(polars.col(tmp_col).is_duplicated().alias(col))
@@ -242,7 +310,7 @@ def with_sorted_reagents(
     rxn_df: polars,
     col_: Sequence[str] = (Reaction.reactants, Reaction.products),
     col_out_: Sequence[str] | None = None,
-    cross_sort: bool | str = True,
+    cross_sort: bool | str = False,
 ) -> polars.DataFrame:
     """Generate sorted reagents columns.
 
@@ -333,8 +401,8 @@ def with_species_presence_column(
     """Add a column indicating the presence of one or more species.
 
     :param rxn_df: A reactions DataFrame
-    :param species_names: Species names
     :param col: The column name
+    :param species_names: Species names
     :return: The modified reactions DataFrame
     """
     return rxn_df.with_columns(
@@ -343,6 +411,21 @@ def with_species_presence_column(
         .list.any()
         .alias(col)
     )
+
+
+def with_equation_match_column(
+    rxn_df: polars.DataFrame, col: str, eqs: Sequence[str]
+) -> polars.DataFrame:
+    """Add a column indicating which equations match those in a list.
+
+    :param rxn_df: Reactions DataFrame
+    :param col: Column
+    :param eqs: Reaction equations
+    :return: Reaction DataFrame
+    """
+    rxns = list(map(chemkin.read_equation_reagents, eqs))
+    expr = reactions_match_expression(rxns)
+    return rxn_df.with_columns(expr.alias(col))
 
 
 def with_reagent_strings_column(
@@ -379,7 +462,7 @@ def rename(
     :param drop_orig: Whether to drop the original names, or include them as `orig`
     :return: Reactions DataFrame
     """
-    col_dct = col_.to_orig([Reaction.reactants, Reaction.products])
+    col_dct = c_.to_orig([Reaction.reactants, Reaction.products])
     rxn_df = rxn_df.with_columns(polars.col(c0).alias(c) for c0, c in col_dct.items())
     rxn_df = translate_reagents(rxn_df=rxn_df, trans=names, trans_into=new_names)
     if drop_orig:
@@ -434,12 +517,116 @@ def select_pes(
     def _match(fml: dict[str, int]) -> bool:
         return any(automol.form.match(fml, f) for f in fmls)
 
-    col_tmp = col_.temp()
+    col_tmp = c_.temp()
     rxn_df = df_.map_(rxn_df, Reaction.formula, col_tmp, _match)
     match_expr = polars.col(col_tmp)
     rxn_df = rxn_df.filter(~match_expr if exclude else match_expr)
     rxn_df = rxn_df.drop(col_tmp)
     return rxn_df
+
+
+# Bootstrapping function
+def bootstrap(
+    data: dict[str, Sequence[object]] | polars.DataFrame,
+    name_dct: dict[str, str] | None = None,
+    spc_df: polars.DataFrame | None = None,
+) -> polars.DataFrame:
+    """Bootstrap species DataFrame from minimal data.
+
+    :param data: Data
+    :param name_dct: Rename reactants and products
+    :param spc_df: Species DataFrame
+    :return: DataFrame
+    """
+    # 0. Make dataframe from given data
+    df = polars.DataFrame(data, strict=False)
+    df = df.rename({c: str.lower(c) for c in df.columns})
+    df = pandera_.impose_schema(Reaction, df)
+
+    # If empty, return early
+    if df.is_empty():
+        df = pandera_.add_missing_columns(Reaction, df)
+        return validate(df)
+
+    if name_dct is not None:
+        df = translate_reagents(df, name_dct)
+
+    if spc_df is None:
+        dtype = pandera_.dtype(Reaction, Reaction.formula)
+        df = df.with_columns(
+            polars.lit({"H": None}, dtype=dtype).alias(Reaction.formula)
+        )
+    else:
+        df = with_formula(df, spc_df=spc_df)
+
+    return validate(df)
+
+
+def sanitize(
+    df: polars.DataFrame, spc_df: polars.DataFrame
+) -> tuple[polars.DataFrame, polars.DataFrame]:
+    """Remove invalid data from reaction DataFrame.
+
+    :param rxn_df: Reaction DataFrame
+    :param spc_df: Species DataFrame
+    :return: Reaction DataFrame and error DataFrame
+    """
+    # 1. Check for missing species errors
+    names = spc_df.get_column(Species.name)
+    err_col = ReactionError.is_missing_species
+    df = df.with_columns(
+        polars.concat_list(Reaction.reactants, Reaction.products)
+        .list.eval(polars.element().is_in(names))
+        .list.all()
+        .not_()
+        .alias(err_col)
+    )
+
+    # 2. Check for unbalanced formula errors
+    rcol, pcol = c_.temp(), c_.temp()
+    df = with_formula(df, spc_df=spc_df, col_in=Reaction.reactants, col_out=rcol)
+    df = with_formula(df, spc_df=spc_df, col_in=Reaction.products, col_out=pcol)
+    err_col = ReactionError.has_unbalanced_formula
+    df = df.with_columns((polars.col(rcol) != polars.col(pcol)).alias(err_col))
+    df = df.drop(pcol)
+
+    # 3. Separate wheat from chaff
+    err_cols = pandera_.columns(ReactionError)
+    has_err = polars.concat_list(err_cols).list.any()
+    err_df = df.filter(has_err)
+    df = df.filter(~has_err).drop(err_cols)
+    return validate(df), err_df
+
+
+def with_formula(
+    df: polars.DataFrame,
+    spc_df: polars.DataFrame,
+    col_in: str = Reaction.reactants,
+    col_out: str = Reaction.formula,
+) -> polars.DataFrame:
+    """Determine reaction formulas from their reagents (reactants or products).
+
+    :param df: The DataFrame
+    :param spc_df: Optionally, pass in a species DataFrame for determining formulas
+    :param col_in: A column with lists of species names (reactants or products), used to
+        determine the overall formula
+    :param col_out: The name of the new formula column
+    :return: The reaction DataFrame with the new formula column
+    """
+    # If the column already exists and we haven't passed in a species dataframe, make
+    # sure we don't wipe it out
+    if Reaction.formula in df and spc_df is None:
+        return df
+
+    tmp_col = c_.temp()
+    dtype = pandera_.dtype(Species, Species.formula)
+    names = spc_df[Species.name]
+    formulas = spc_df[Species.formula]
+    expr = polars.element().replace_strict(names, formulas, default={"H": None})
+    df = df.with_columns(polars.col(col_in).list.eval(expr).alias(tmp_col))
+    df = df_.map_(df, tmp_col, col_out, automol.form.join_sequence, dtype_=dtype)
+    df = df.drop(tmp_col)
+    return df
 
 
 # helpers
@@ -456,3 +643,66 @@ def normalize_reaction_ids(
     return reaction_ids(
         polars.DataFrame(rxn_ids, schema=ID_COLS, orient="row"), cross_sort=cross_sort
     )
+
+
+def reactions_match_expression(
+    rxns: Sequence[tuple[Sequence[str], Sequence[str]]],
+    cols: tuple[str, str] = (Reaction.reactants, Reaction.products),
+) -> polars.Expr:
+    """Expression for matching a list of reagents.
+
+    :param rxn: Reactans and products list
+    :param cols: Reactant and product columns
+    :return: Expression
+    """
+    exprs = [reaction_match_expression(r, cols) for r in rxns]
+    return functools.reduce(polars.Expr.or_, exprs)
+
+
+def reaction_match_expression(
+    rxn: tuple[Sequence[str], Sequence[str]],
+    cols: tuple[str, str] = (Reaction.reactants, Reaction.products),
+) -> polars.Expr:
+    """Expression for matching a list of reagents.
+
+    :param rxn: Reactans and products
+    :param cols: Reactant and product columns
+    :return: Expression
+    """
+    assert len(rxn) == len(cols) == 2
+    rcts, prds = rxn
+    rcol, pcol = cols
+    return reagents_match_expression(rcts, rcol) & reagents_match_expression(prds, pcol)
+
+
+def reagents_match_expression(
+    rgts: list[str], col: str = Reaction.reactants
+) -> polars.Expr:
+    """Expression for matching a list of reagents.
+
+    :param rgts: Reagents
+    :param col: Column
+    :return: Expression
+    """
+    return polars.col(col).list.set_symmetric_difference(rgts).list.len() == 0
+
+
+# def reaction_match_expression(rcts: list[str], prds: list[str]) -> polars.Expr:
+#     """Expression for matching a reaction.
+
+#     :param rcts: _description_
+#     :param prds: _description_
+#     :return: _description_
+#     """
+#     return            (
+#                     polars.col(Reaction.reactants)
+#                     .list.set_symmetric_difference(rct)
+#                     .list.len()
+#                     == 0
+#                 )
+#                 & (
+#                     polars.col(Reaction.products)
+#                     .list.set_symmetric_difference(prd)
+#                     .list.len()
+#                     == 0
+#                 )

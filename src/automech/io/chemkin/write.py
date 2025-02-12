@@ -10,10 +10,11 @@ from autochem import rate, unit_
 from autochem.unit_ import UNITS
 from autochem.util import chemkin
 
-from ... import reac_table, schema_old
+from ... import reac_table
 from ..._mech import Mechanism
-from ...schema_old import ReactionSorted, Species, SpeciesThermo
-from ...util import col_
+from ...reac_table import ReactionSorted
+from ...spec_table import Species, SpeciesThermo
+from ...util import c_, pandera_
 from .read import KeyWord
 
 ENERGY_PER_SUBSTANCE_UNIT = unit_.string(UNITS.energy_per_substance).upper()
@@ -115,15 +116,15 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
         return block(KeyWord.REACTIONS, "", header=header, frame=frame)
 
     # Identify duplicates
-    dup_col = col_.temp()
+    dup_col = c_.temp()
     rxn_df = reac_table.with_duplicate_column(rxn_df, dup_col)
 
     # Add reaction objects
-    obj_col = col_.temp()
+    obj_col = c_.temp()
     rxn_df = reac_table.with_rate_objects(rxn_df, obj_col, fill=True)
 
     # Add reaction equations to determine apppropriate width
-    eq_col = col_.temp()
+    eq_col = c_.temp()
     rxn_df = rxn_df.with_columns(
         polars.col(obj_col)
         .map_elements(rate.chemkin_equation, return_dtype=polars.String)
@@ -132,7 +133,7 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
     eq_width = 8 + rxn_df.get_column(eq_col).str.len_chars().max()
 
     # Add Chemkin rate strings
-    ck_col = col_.temp()
+    ck_col = c_.temp()
     chemkin_string_ = functools.partial(rate.chemkin_string, eq_width=eq_width)
     rxn_df = rxn_df.with_columns(
         polars.col(obj_col)
@@ -152,10 +153,10 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
     )
 
     # Add sort parameters
-    srt_col = col_.temp()
+    srt_col = c_.temp()
     srt_expr = (
-        polars.concat_list(schema_old.columns(ReactionSorted))
-        if schema_old.has_columns(rxn_df, ReactionSorted)
+        polars.concat_list(pandera_.columns(ReactionSorted))
+        if pandera_.has_columns(ReactionSorted, rxn_df)
         else polars.lit([None, None, None])
     )
     rxn_df = rxn_df.with_columns(srt_expr.alias(srt_col))

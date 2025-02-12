@@ -12,18 +12,23 @@ Model: TypeAlias = pa.DataFrameModel
 
 
 # Model-only functions
-def columns(model_: Model | Sequence[Model]) -> list[str]:
+def columns(
+    model_: Model | Sequence[Model], df: polars.DataFrame | None = None
+) -> list[str]:
     """Get model column names.
 
     :param model_: Model(s)
     :return: Schema, as a mapping of column names to types
     """
     models = normalize_model_input(model_)
-    return list(
+    cols = list(
         mit.unique_everseen(
             itertools.chain.from_iterable(m.to_schema().columns for m in models)
         )
     )
+    if df is not None:
+        cols = [c for c in cols if c in df.columns]
+    return cols
 
 
 def schema(
@@ -82,11 +87,22 @@ def dtypes(
     return list(map(schema_dct.get, cols))
 
 
+def empty(
+    model_: Model | Sequence[Model]
+) -> polars.DataFrame:
+    """Create empty DataFrame matching schema.
+
+    :param model_: Model(s)
+    :return: Data types
+    """
+    return polars.DataFrame([], schema=schema(model_))
+
+
 # Data frame functions
 def validate(
     model_: Model | Sequence[Model], df: polars.DataFrame, sort: bool = True
 ) -> polars.DataFrame:
-    """Sort model columns in DataFrame.
+    """Validate DataFrame against model(s).
 
     :param model_: Model(s)
     :param df: DataFrame
@@ -100,8 +116,49 @@ def validate(
     return df
 
 
-def add_missing_column_(
-    model_: Model | Sequence[Model], df: polars.DataFrame, col_: str | Sequence[str]
+def impose_schema(
+    model_: Model | Sequence[Model], df: polars.DataFrame
+) -> polars.DataFrame:
+    """Cast DataFrame to model schema(s).
+
+    :param model_: Model(s)
+    :param df: DataFrame
+    :return: DataFrame
+    """
+    cols = columns(model_, df)
+    return df.cast(schema(model_, cols))
+
+
+def has_columns(
+    model_: Model | Sequence[Model], df: polars.DataFrame
+) -> polars.DataFrame:
+    """Determine if DataFrame has columns from model(s).
+
+    :param model_: Model(s)
+    :param df: DataFrame
+    :return: DataFrame
+    """
+    return all(c in df for c in columns(model_))
+
+
+def sort_columns(
+    model_: Model | Sequence[Model], df: polars.DataFrame
+) -> polars.DataFrame:
+    """Sort DataFrame columns against model(s).
+
+    :param model_: Model(s)
+    :param df: DataFrame
+    :return: DataFrame
+    """
+    cols = columns(model_)
+    cols.extend(c for c in df.columns if c not in cols)
+    return df.select(cols)
+
+
+def add_missing_columns(
+    model_: Model | Sequence[Model],
+    df: polars.DataFrame,
+    col_: str | Sequence[str] | None = None,
 ) -> polars.DataFrame:
     """Add missing model column(s) to DataFrame.
 
@@ -116,18 +173,18 @@ def add_missing_column_(
     return df
 
 
-def sort_columns(
+def drop_extra_columns(
     model_: Model | Sequence[Model], df: polars.DataFrame
 ) -> polars.DataFrame:
-    """Sort model columns in DataFrame.
+    """Drop extra column(s) from DataFrame.
+
+    Extra columns are those not in the model(s).
 
     :param model_: Model(s)
     :param df: DataFrame
     :return: DataFrame
     """
-    cols = columns(model_)
-    cols.extend(c for c in df.columns if c not in cols)
-    return df.select(cols)
+    return df.drop([c for c in df.columns if c not in columns(model_)])
 
 
 # Helpers

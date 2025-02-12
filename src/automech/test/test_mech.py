@@ -6,7 +6,8 @@ import pytest
 from automol.graph import enum
 
 import automech
-from automech.schema_old import ReactionSorted, Species
+from automech.reac_table import ReactionSorted
+from automech.spec_table import Species
 from automech.util import df_
 
 DATA_PATH = Path(__file__).parent / "data"
@@ -214,14 +215,31 @@ def test__with_sort_data(mech0, srt_dct0):
     assert srt_dct == srt_dct0, f"\n{srt_dct} !=\n{srt_dct0}"
 
 
+@pytest.mark.parametrize(
+    "rxn_file_name, spc_file_name, rxn_count, err_count",
+    [
+        ("syngas.dat", "syngas_species.csv", 74, 4),
+    ],
+)
+def test__sanitize(rxn_file_name, spc_file_name, rxn_count, err_count):
+    """Test sanitize function."""
+    rxn_path = DATA_PATH / rxn_file_name
+    spc_path = DATA_PATH / spc_file_name
+    mech = automech.io.mechanalyzer.read.mechanism(rxn_path, spc_path)
+    rxn_df, err_df = automech.reac_table.sanitize(mech.reactions, spc_df=mech.species)
+    assert df_.count(rxn_df) == rxn_count, f"{df_.count(rxn_df)} != {rxn_count}"
+    assert df_.count(err_df) == err_count, f"{df_.count(err_df)} != {err_count}"
+
+
 if __name__ == "__main__":
     # test__from_smiles()
     # test__expand_stereo(MECH_BUTENE, 6, 8, 1, 3, True)
     # test__expand_stereo(MECH_NO_REACIONS, 0, 2, 0, 2, False)
     # test__expand_parent_stereo(MECH_BUTENE, MECH_NO_REACIONS, 6, 8)
-    test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
+    # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
     # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
-    # test__display(MECH_EMPTY, None, None)
+    test__display(MECH_EMPTY, None, None)
+    # test__network(MECH_EMPTY)
     # test__network(MECH_NO_REACIONS)
     # test__display(MECH_NO_REACIONS, None, None)
     # test__display(MECH_PROPANE, ("CCC", "[OH]"), ("C3+OH=C3y1+H2O",))
