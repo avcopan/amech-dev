@@ -887,7 +887,9 @@ def _enumerate_reactions(
     name_ = dict(zip(spc_ids, spc_names, strict=True)).get
     rxn_ids = [[list(map(name_, r)) for r in rs] for rs in rxn_spc_ids]
     rxn_ids = list(mit.unique_everseen(rxn_ids))
-    mech.reactions = reac_table.add_missing_reactions_by_id(mech.reactions, rxn_ids)
+    mech.reactions = reac_table.add_missing_reactions_by_id(
+        mech.reactions, rxn_ids, spc_df=mech.species
+    )
     mech = mech if src_mech is None else left_update(mech, src_mech)
     return drop_duplicate_reactions(mech)
 

@@ -87,9 +87,7 @@ def dtypes(
     return list(map(schema_dct.get, cols))
 
 
-def empty(
-    model_: Model | Sequence[Model]
-) -> polars.DataFrame:
+def empty(model_: Model | Sequence[Model]) -> polars.DataFrame:
     """Create empty DataFrame matching schema.
 
     :param model_: Model(s)

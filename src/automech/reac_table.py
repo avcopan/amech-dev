@@ -190,12 +190,15 @@ def left_update(
 
 # add/remove rows
 def add_missing_reactions_by_id(
-    rxn_df: polars.DataFrame, rxn_ids: Sequence[ReactionId]
+    rxn_df: polars.DataFrame,
+    rxn_ids: Sequence[ReactionId],
+    spc_df: polars.DataFrame | None = None,
 ) -> polars.DataFrame:
     """Add missing reactions to a reactions DataFrame.
 
-    :param spc_df: Reactions DataFrame
+    :param rxn_df: Reactions DataFrame
     :param rxn_ids: Reaction IDs
+    :param spc_df: Species DataFrame
     :return: Reactions DataFrame
     """
     # Sort reaction IDs
@@ -214,8 +217,8 @@ def add_missing_reactions_by_id(
 
     # Append missing reactions to reactions DataFrame
     miss_rxn_ids = [s for i, s in enumerate(rxn_ids) if i not in rxn_df[idx_col]]
-    miss_rxn_df = polars.DataFrame(miss_rxn_ids, orient="row")
-    miss_rxn_df = validate(miss_rxn_df)
+    miss_rxn_df = polars.DataFrame(miss_rxn_ids, schema=ID_COLS, orient="row")
+    miss_rxn_df = bootstrap(miss_rxn_df, spc_df=spc_df)
     return polars.concat([rxn_df.drop(idx_col), miss_rxn_df], how="diagonal_relaxed")
 
 
@@ -685,24 +688,3 @@ def reagents_match_expression(
     :return: Expression
     """
     return polars.col(col).list.set_symmetric_difference(rgts).list.len() == 0
-
-
-# def reaction_match_expression(rcts: list[str], prds: list[str]) -> polars.Expr:
-#     """Expression for matching a reaction.
-
-#     :param rcts: _description_
-#     :param prds: _description_
-#     :return: _description_
-#     """
-#     return            (
-#                     polars.col(Reaction.reactants)
-#                     .list.set_symmetric_difference(rct)
-#                     .list.len()
-#                     == 0
-#                 )
-#                 & (
-#                     polars.col(Reaction.products)
-#                     .list.set_symmetric_difference(prd)
-#                     .list.len()
-#                     == 0
-#                 )

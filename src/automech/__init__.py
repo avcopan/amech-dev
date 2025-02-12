@@ -1,6 +1,6 @@
 """Data processing at the level of whole mechanisms."""
 
-from . import data, io, net, reac_table, spec_table, util
+from . import io, net, reac_table, spec_table, util
 from ._mech import (
     Mechanism,
     are_equivalent,
@@ -79,7 +79,6 @@ __all__ = [
     "display_reactions",
     # modules
     "io",
-    "data",
     "util",
     "net",
     "reac_table",

@@ -419,6 +419,7 @@ def bootstrap(
     # Populate missing columns from AMChI
     populators = {
         Species.name: automol.amchi.chemkin_name,
+        Species.smiles: automol.amchi.smiles,
         Species.charge: (lambda _: 0),
         Species.formula: automol.amchi.formula,
     }

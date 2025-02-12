@@ -238,20 +238,20 @@ if __name__ == "__main__":
     # test__expand_parent_stereo(MECH_BUTENE, MECH_NO_REACIONS, 6, 8)
     # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
     # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
-    test__display(MECH_EMPTY, None, None)
+    # test__display(MECH_EMPTY, None, None)
     # test__network(MECH_EMPTY)
     # test__network(MECH_NO_REACIONS)
     # test__display(MECH_NO_REACIONS, None, None)
     # test__display(MECH_PROPANE, ("CCC", "[OH]"), ("C3+OH=C3y1+H2O",))
     # test__network(MECH_NO_REACIONS)
-    # test__enumerate_reactions(
-    #     MECH_BUTENE_SUBSET,
-    #     enum.ReactionSmarts.abstraction,
-    #     [["C1=CCCC1", "CC=CC"], "[OH]"],
-    #     5,
-    #     9,
-    #     MECH_BUTENE,
-    # )
+    test__enumerate_reactions(
+        MECH_BUTENE_SUBSET,
+        enum.ReactionSmarts.abstraction,
+        [["C1=CCCC1", "CC=CC"], "[OH]"],
+        5,
+        9,
+        MECH_BUTENE,
+    )
     # test__with_sort_data(
     #     MECH_ETHANE,
     #     {
