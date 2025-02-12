@@ -155,7 +155,7 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
     # Add sort parameters
     srt_col = c_.temp()
     srt_expr = (
-        polars.concat_list(pandera_.columns(ReactionSorted))
+        polars.concat_list(pandera_.columns(ReactionSorted)).cast(list[str])
         if pandera_.has_columns(ReactionSorted, rxn_df)
         else polars.lit([None, None, None])
     )
