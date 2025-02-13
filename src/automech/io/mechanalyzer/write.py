@@ -29,6 +29,7 @@ def mechanism(
     mech: Mechanism,
     rxn_out: str | Path | None = None,
     spc_out: str | Path | None = None,
+    fill_rates: bool = True,
     string: bool = True,  # Change default to False when implemented
 ) -> tuple[str | dict, str | pandas.DataFrame]:
     """Write mechanism to MechAnalyzer format.
@@ -36,11 +37,12 @@ def mechanism(
     :param mech: A mechanism
     :param rxn_out: Optionally, write the output to this file path (reactions)
     :param spc_out: Optionally, write the output to this file path (species)
+    :param fill_rates: Whether to fill missing rates with dummy values
     :param string: Return as Mechanalyzer CHEMKIN and CSV strings, instead of a reaction
         dictionary and species dataframe?
     :return: MechaAnalyzer reaction dictionary (or CHEMKIN string) and species dataframe
     """
-    mech_str = chemkin_write.reactions_block(mech)
+    mech_str = chemkin_write.reactions_block(mech, fill_rates=fill_rates)
     if rxn_out is not None:
         rxn_out: Path = Path(rxn_out)
         rxn_out.write_text(mech_str)

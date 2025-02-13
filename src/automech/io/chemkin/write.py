@@ -6,7 +6,6 @@ from pathlib import Path
 
 import automol
 import polars
-
 from autochem import rate, unit_
 from autochem.unit_ import UNITS
 from autochem.util import chemkin
@@ -22,18 +21,21 @@ ENERGY_PER_SUBSTANCE = unit_.string(UNITS.energy_per_substance).upper().replace(
 SUBTANCE = unit_.string(UNITS.substance).upper().replace(" ", "")
 
 
-def mechanism(mech: Mechanism, out: str | Path | None = None) -> str:
+def mechanism(
+    mech: Mechanism, out: str | Path | None = None, fill_rates: bool = False
+) -> str:
     """Write a mechanism to CHEMKIN format.
 
     :param mech: A mechanism
     :param out: Optionally, write the output to this file path
+    :param fill_rates: Whether to fill missing rates with dummy values
     :return: The CHEMKIN mechanism as a string
     """
     blocks = [
         elements_block(mech),
         species_block(mech),
         thermo_block(mech),
-        reactions_block(mech),
+        reactions_block(mech, fill_rates=fill_rates),
     ]
     mech_str = "\n\n\n".join(b for b in blocks if b is not None)
     if out is not None:
@@ -100,11 +102,14 @@ def thermo_block(mech: Mechanism) -> str:
     return block(KeyWord.THERM, therm_strs, header=header)
 
 
-def reactions_block(mech: Mechanism, frame: bool = True) -> str:
+def reactions_block(
+    mech: Mechanism, frame: bool = True, fill_rates: bool = False
+) -> str:
     """Write the reactions block to a string.
 
     :param mech: A mechanism
     :param frame: Whether to frame the block with its header and footer
+    :param fill_rates: Whether to fill missing rates with dummy values
     :return: The reactions block string
     """
     # Generate the header
@@ -122,7 +127,7 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
 
     # Add reaction objects
     obj_col = c_.temp()
-    rxn_df = reaction.with_rate_objects(rxn_df, obj_col, fill=True)
+    rxn_df = reaction.with_rate_objects(rxn_df, obj_col, fill=fill_rates)
 
     # Add reaction equations to determine apppropriate width
     eq_col = c_.temp()
