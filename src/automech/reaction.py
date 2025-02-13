@@ -249,7 +249,7 @@ def with_key(
     rxn_df: polars.DataFrame,
     col: str = "key",
     spc_df: polars.DataFrame | None = None,
-    cross_sort: bool | str = True,
+    cross_sort: bool | str = False,
     stereo: bool = True,
 ) -> polars.DataFrame:
     """Add a key for identifying unique reactions to this DataFrame.

@@ -349,7 +349,7 @@ def drop_duplicate_reactions(mech: Mechanism) -> Mechanism:
     mech = mech.model_copy()
 
     col_tmp = c_.temp()
-    mech.reactions = reaction.with_key(mech.reactions, col=col_tmp)
+    mech.reactions = reaction.with_key(mech.reactions, col=col_tmp, cross_sort=True)
     mech.reactions = mech.reactions.unique(col_tmp, maintain_order=True)
     mech.reactions = mech.reactions.drop(col_tmp)
     return mech
@@ -431,25 +431,71 @@ def without_unused_species(mech: Mechanism) -> Mechanism:
     return mech
 
 
-def with_key(
-    mech: Mechanism, col: str = "key", stereo: bool = True
-) -> tuple[Mechanism, Mechanism]:
+def with_key(mech: Mechanism, col: str = "key", stereo: bool = True) -> Mechanism:
     """Add match key column for species and reactions.
 
-    Currently only accepts a single species key, but could be generalized to accept
-    more. The challenge would be in hashing the values.
-
-    :param mech1: First mechanism
-    :param spc_key: Species ID column for comparison
-    :param col: Output column identifying common species and reactions
+    :param mech: Mechanism
+    :param col: Key column identifying common species and reactions
     :param stereo: Whether to include stereochemistry
     :return: First and second Mechanisms with intersection columns
     """
     mech = mech.model_copy()
     mech.species = species.with_key(mech.species, col=col, stereo=stereo)
     mech.reactions = reaction.with_key(
-        mech.reactions, col, spc_df=mech.species, stereo=stereo
+        mech.reactions, col, spc_df=mech.species, stereo=stereo, cross_sort=True
     )
+    return mech
+
+
+def with_rate_objects(
+    mech: Mechanism,
+    col: str,
+    comp_mechs: Mapping[str, Mechanism] | None = None,
+    stereo: bool = True,
+) -> Mechanism:
+    """Add rate objects.
+
+    :param mech: Mechanism
+    :param col: Column
+    :param comp_mechs: Other mechanisms by rate object column
+    :param stereo: Whether to include stereo in matching reactions
+    :return: Mechanism
+    """
+    mech = mech.model_copy()
+    mech.reactions = reaction.with_rate_objects(mech.reactions, col=col)
+    if comp_mechs is not None:
+        mech = with_comparison_rate_objects(mech, comp_mechs=comp_mechs, stereo=stereo)
+    return mech
+
+
+def with_comparison_rate_objects(
+    mech: Mechanism,
+    comp_mechs: Mapping[str, Mechanism],
+    stereo: bool = True,
+) -> Mechanism:
+    """Add rate objects from other mechanisms for comparison.
+
+    :param mech: Mechanism
+    :param comp_mechs: Other mechanisms by rate object column
+    :param stereo: Whether to include stereo in matching reactions
+    :return: Mechanism
+    """
+    mech = mech.model_copy()
+
+    key_col = c_.temp()
+    mech.reactions = reaction.with_key(
+        mech.reactions, col=key_col, spc_df=mech.species, stereo=stereo
+    )
+
+    for comp_col, comp_mech in comp_mechs.items():
+        spc_df = comp_mech.species
+        rxn_df = comp_mech.reactions
+        rxn_df = reaction.with_key(rxn_df, col=key_col, spc_df=spc_df, stereo=stereo)
+        rxn_df = reaction.with_rate_objects(rxn_df, col=comp_col)
+        rxn_df = rxn_df.select(key_col, comp_col)
+        mech.reactions = mech.reactions.join(rxn_df, on=key_col, how="left")
+
+    mech.reactions = mech.reactions.drop(key_col)
     return mech
 
 
