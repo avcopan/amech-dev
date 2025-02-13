@@ -2,6 +2,7 @@
 
 import functools
 import itertools
+import textwrap
 from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import TypeAlias
 
@@ -450,8 +451,10 @@ def with_key(mech: Mechanism, col: str = "key", stereo: bool = True) -> Mechanis
 def with_rate_objects(
     mech: Mechanism,
     col: str,
-    comp_mechs: Mapping[str, Mechanism] | None = None,
-    stereo: bool = True,
+    comp_mechs: Sequence[Mechanism] = (),
+    comp_cols: Sequence[str] = (),
+    comp_stereo: bool = True,
+    fill: bool = False,
 ) -> Mechanism:
     """Add rate objects.
 
@@ -459,24 +462,29 @@ def with_rate_objects(
     :param col: Column
     :param comp_mechs: Other mechanisms by rate object column
     :param stereo: Whether to include stereo in matching reactions
+    :param fill: Whether to fill in missing rates
     :return: Mechanism
     """
     mech = mech.model_copy()
-    mech.reactions = reaction.with_rate_objects(mech.reactions, col=col)
+    mech.reactions = reaction.with_rate_objects(mech.reactions, col=col, fill=fill)
     if comp_mechs is not None:
-        mech = with_comparison_rate_objects(mech, comp_mechs=comp_mechs, stereo=stereo)
+        mech = with_comparison_rate_objects(
+            mech, comp_mechs=comp_mechs, comp_cols=comp_cols, stereo=comp_stereo
+        )
     return mech
 
 
 def with_comparison_rate_objects(
     mech: Mechanism,
-    comp_mechs: Mapping[str, Mechanism],
+    comp_mechs: Sequence[Mechanism],
+    comp_cols: Sequence[str],
     stereo: bool = True,
 ) -> Mechanism:
     """Add rate objects from other mechanisms for comparison.
 
     :param mech: Mechanism
-    :param comp_mechs: Other mechanisms by rate object column
+    :param comp_mechs: Comparison mechanisms
+    :param comp_cols: Comparison columns
     :param stereo: Whether to include stereo in matching reactions
     :return: Mechanism
     """
@@ -487,7 +495,7 @@ def with_comparison_rate_objects(
         mech.reactions, col=key_col, spc_df=mech.species, stereo=stereo
     )
 
-    for comp_col, comp_mech in comp_mechs.items():
+    for comp_col, comp_mech in zip(comp_cols, comp_mechs, strict=True):
         spc_df = comp_mech.species
         rxn_df = comp_mech.reactions
         rxn_df = reaction.with_key(rxn_df, col=key_col, spc_df=spc_df, stereo=stereo)
@@ -1111,7 +1119,10 @@ def display_reactions(
     spc_cols: Sequence[str] = (Species.smiles,),
     t_range: tuple[Number, Number] = (400, 1250),
     p: Number = 1,
-    comp_mechs: Mapping[str, Mechanism] | None = None,
+    label: str = "This work",
+    comp_mechs: Sequence[Mechanism] = (),
+    comp_labels: Sequence[str] = (),
+    comp_stereo: bool = True,
 ):
     """Display reactions in mechanism.
 
@@ -1122,9 +1133,23 @@ def display_reactions(
     :param spc_cols: Optionally, translate reactant and product names into these
         species dataframe values
     :param t_grid: Grid of temperature values
-    :param comp_mech_: Mechanism(s) to compare rates with
+    :param label: Label for rate comparison
+    :param comp_mechs: Mechanisms to compare rates with by label
+    :param comp_stereo: Whether to include stereochemistry when matching reactions
     """
-    # ncomps = len(comp_mechs)
+    # Add rate objects with comparisons
+    ncomps = len(comp_mechs)
+    assert len(comp_labels) == ncomps, f"{comp_labels} !~ ncomps"
+    obj_col = c_.temp()
+    comp_cols = [c_.temp() for _ in range(ncomps)]
+    mech = with_rate_objects(
+        mech,
+        col=obj_col,
+        comp_mechs=comp_mechs,
+        comp_cols=comp_cols,
+        comp_stereo=comp_stereo,
+        fill=True,
+    )
 
     # Read in mechanism data
     spc_df = mech.species
@@ -1135,10 +1160,6 @@ def display_reactions(
         tmp_col = c_.temp()
         rxn_df = reaction.with_equation_match_column(rxn_df, tmp_col, eqs)
         rxn_df = rxn_df.filter(tmp_col).drop(tmp_col)
-
-    # 1. Add rate objects, filling in dummy values where needed
-    obj_col = c_.temp()
-    rxn_df = reaction.with_rate_objects(rxn_df, obj_col, fill=True)
 
     # 2. Add AMChI translation + others that were requested
     spc_cols_ = [Species.amchi, *spc_cols]
@@ -1152,24 +1173,66 @@ def display_reactions(
         )
 
     def _display_reaction(rate: Rate, *vals):
-        # comp_rates, vals = vals[:ncomps], vals[ncomps:]
+        comp_rates, vals = vals[:ncomps], vals[ncomps:]
+        idxs = [i for i, r in enumerate(comp_rates) if r is not None]
+        comp_rates_ = [comp_rates[i] for i in idxs]
+        comp_labels_ = [comp_labels[i] for i in idxs]
+
         assert len(vals) % 2 == 0, "Expected even number of values"
         rxn_chis, *rxn_vals_lst = list(zip(*mit.divide(2, vals), strict=True))
         eq = autochem.rate.chemkin_equation(rate)
+        print()
+        print("*********")
         print(f"Reaction: {eq}")
 
         # Print the requested translations
+        print("Translations:")
         for spc_col, (rct_vals, prd_vals) in zip(spc_cols, rxn_vals_lst, strict=True):
-            print(f"Translation to {spc_col}:")
-            print(f"  reactants = {rct_vals}")
-            print(f"  products = {prd_vals}")
+            indent_print(f"{spc_col}:")
+            indent_print(f"reactants = {rct_vals}", n=2)
+            indent_print(f"products = {prd_vals}", n=2)
+
+        print("Rate parameters:")
+        indent_print(f"{label}:")
+        indent_print(autochem.rate.chemkin_string(rate), n=2)
+        for comp_label, comp_rate in zip(comp_labels_, comp_rates_, strict=True):
+            indent_print(f"{comp_label}:")
+            indent_print(autochem.rate.chemkin_string(comp_rate), n=2)
 
         # Display the reaction
         automol.amchi.display_reaction(*rxn_chis, stereo=stereo)
 
         # Display the Arrhenius plot
-        ipy_display(rate.display(t_range=t_range, p=p))
+        ipy_display(
+            autochem.rate.display(
+                rate,
+                comp_rates=comp_rates_,
+                comp_labels=comp_labels_,
+                t_range=t_range,
+                p=p,
+            )
+        )
 
     # Display requested reactions
-    cols = [obj_col, *rct_cols, *prd_cols]
+    cols = [obj_col, *comp_cols, *rct_cols, *prd_cols]
     df_.map_(rxn_df, cols, None, _display_reaction)
+
+
+# Helpers
+def indent_print(text: str, n: int = 1) -> None:
+    """Indent text by a number of spaces and print.
+
+    :param text: Text
+    :param n: Number of double-spaced indentations
+    """
+    return print(indent(text, n=n))
+
+
+def indent(text: str, n: int = 1) -> str:
+    """Indent text by a number of spaces.
+
+    :param text: Text
+    :param n: Number of double-spaced indentations
+    :return: Text
+    """
+    return textwrap.indent(text, "  " * n)
