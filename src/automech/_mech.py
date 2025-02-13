@@ -8,7 +8,6 @@ from typing import TypeAlias
 import autochem
 import automol
 import more_itertools as mit
-import numpy
 import polars
 import pydantic
 from autochem.rate import Rate
@@ -1066,6 +1065,7 @@ def display_reactions(
     spc_cols: Sequence[str] = (Species.smiles,),
     t_range: tuple[Number, Number] = (400, 1250),
     p: Number = 1,
+    comp_mechs: Mapping[str, Mechanism] | None = None,
 ):
     """Display reactions in mechanism.
 
@@ -1076,7 +1076,10 @@ def display_reactions(
     :param spc_cols: Optionally, translate reactant and product names into these
         species dataframe values
     :param t_grid: Grid of temperature values
+    :param comp_mech_: Mechanism(s) to compare rates with
     """
+    # ncomps = len(comp_mechs)
+
     # Read in mechanism data
     spc_df = mech.species
     rxn_df = mech.reactions
@@ -1102,10 +1105,8 @@ def display_reactions(
             rxn_df, names, vals, rct_col=rct_col, prd_col=prd_col
         )
 
-    # Determine temperature range
-    t = numpy.linspace(*t_range, num=500)
-
     def _display_reaction(rate: Rate, *vals):
+        # comp_rates, vals = vals[:ncomps], vals[ncomps:]
         assert len(vals) % 2 == 0, "Expected even number of values"
         rxn_chis, *rxn_vals_lst = list(zip(*mit.divide(2, vals), strict=True))
         eq = autochem.rate.chemkin_equation(rate)
@@ -1121,8 +1122,7 @@ def display_reactions(
         automol.amchi.display_reaction(*rxn_chis, stereo=stereo)
 
         # Display the Arrhenius plot
-        chart = autochem.util.plot.arrhenius_plot(t, rate(t, p), y_unit=rate.unit)
-        ipy_display(chart)
+        ipy_display(rate.display(t_range=t_range, p=p))
 
     # Display requested reactions
     cols = [obj_col, *rct_cols, *prd_cols]
