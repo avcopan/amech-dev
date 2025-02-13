@@ -3,12 +3,16 @@
 import functools
 import itertools
 from collections.abc import Callable, Collection, Mapping, Sequence
+from typing import TypeAlias
 
 import autochem
 import automol
 import more_itertools as mit
+import numpy
 import polars
 import pydantic
+from autochem.rate import Rate
+from IPython.display import display as ipy_display
 
 from . import net as net_
 from . import reaction, species
@@ -764,7 +768,7 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     rem_rxn_df = mech.reactions.filter(~needs_exp)
 
     #   b. Expand and dump to dictionary
-    def exp_(rate: autochem.rate.Rate) -> list[dict[str, object]]:
+    def exp_(rate: Rate) -> list[dict[str, object]]:
         rates = autochem.rate.expand_lumped(rate, exp_dct=exp_dct)
         return (
             [r.reactants for r in rates],
@@ -1052,12 +1056,16 @@ def display_species(
     df_.map_(spc_df, (Species.amchi, *keys), None, _display_species)
 
 
+Number: TypeAlias = float | int
+
+
 def display_reactions(
     mech: Mechanism,
     eqs: Collection | None = None,
     stereo: bool = True,
-    cols: Sequence[str] = (),
     spc_cols: Sequence[str] = (Species.smiles,),
+    t_range: tuple[Number, Number] = (400, 1250),
+    p: Number = 1,
 ):
     """Display reactions in mechanism.
 
@@ -1065,43 +1073,57 @@ def display_reactions(
     :param eqs: Optionally, specify specific equations to visualize
     :param stereo: Include stereochemistry in species drawings?, defaults to True
     :param keys: Keys of extra columns to print
-    :param spc_keys: Optionally, translate reactant and product names into these
+    :param spc_cols: Optionally, translate reactant and product names into these
         species dataframe values
+    :param t_grid: Grid of temperature values
     """
     # Read in mechanism data
     spc_df = mech.species
     rxn_df = mech.reactions
 
+    # Select the requested equations, if any
     if eqs is not None:
         tmp_col = c_.temp()
         rxn_df = reaction.with_equation_match_column(rxn_df, tmp_col, eqs)
         rxn_df = rxn_df.filter(tmp_col).drop(tmp_col)
 
-    chi_dct = df_.lookup_dict(spc_df, Species.name, Species.amchi)
-    trans_dcts = {k: df_.lookup_dict(spc_df, Species.name, k) for k in spc_cols}
+    # 1. Add rate objects, filling in dummy values where needed
+    obj_col = c_.temp()
+    rxn_df = reaction.with_rate_objects(rxn_df, obj_col, fill=True)
 
-    def _display_reaction(rcts, prds, *vals):
-        """Add a node to network."""
-        # Print requested information
-        for col, val in zip(cols, vals, strict=True):
-            print(f"{col}: {val}")
+    # 2. Add AMChI translation + others that were requested
+    spc_cols_ = [Species.amchi, *spc_cols]
+    rct_cols = [c_.temp() for _ in range(len(spc_cols_))]
+    prd_cols = [c_.temp() for _ in range(len(spc_cols_))]
+    names = spc_df.get_column(Species.name)
+    for spc_col, rct_col, prd_col in zip(spc_cols_, rct_cols, prd_cols, strict=True):
+        vals = spc_df.get_column(spc_col)
+        rxn_df = reaction.translate_reagents(
+            rxn_df, names, vals, rct_col=rct_col, prd_col=prd_col
+        )
 
-        # Display reaction
-        rchis = list(map(chi_dct.get, rcts))
-        pchis = list(map(chi_dct.get, prds))
+    # Determine temperature range
+    t = numpy.linspace(*t_range, num=500)
 
-        for key, trans_dct in trans_dcts.items():
-            rvals = list(map(trans_dct.get, rcts))
-            pvals = list(map(trans_dct.get, prds))
-            print(f"Species `name`=>`{key}` translation")
-            print(f"  reactants = {rvals}")
-            print(f"  products = {pvals}")
+    def _display_reaction(rate: Rate, *vals):
+        assert len(vals) % 2 == 0, "Expected even number of values"
+        rxn_chis, *rxn_vals_lst = list(zip(*mit.divide(2, vals), strict=True))
+        eq = autochem.rate.chemkin_equation(rate)
+        print(f"Reaction: {eq}")
 
-        if not all(isinstance(n, str) for n in rchis + pchis):
-            print(f"Some ChIs missing from species table: {rchis} = {pchis}")
-        else:
-            automol.amchi.display_reaction(rchis, pchis, stereo=stereo)
+        # Print the requested translations
+        for spc_col, (rct_vals, prd_vals) in zip(spc_cols, rxn_vals_lst, strict=True):
+            print(f"Translation to {spc_col}:")
+            print(f"  reactants = {rct_vals}")
+            print(f"  products = {prd_vals}")
+
+        # Display the reaction
+        automol.amchi.display_reaction(*rxn_chis, stereo=stereo)
+
+        # Display the Arrhenius plot
+        chart = autochem.util.plot.arrhenius_plot(t, rate(t, p), y_unit=rate.unit)
+        ipy_display(chart)
 
     # Display requested reactions
-    cols_ = [Reaction.reactants, Reaction.products, *cols]
-    df_.map_(rxn_df, cols_, None, _display_reaction)
+    cols = [obj_col, *rct_cols, *prd_cols]
+    df_.map_(rxn_df, cols, None, _display_reaction)
