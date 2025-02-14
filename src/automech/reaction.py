@@ -160,14 +160,17 @@ def reagent_strings(
 def update(rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame) -> polars.DataFrame:
     """Update reaction data by reaction key.
 
+    Note: Reactants and products are updated as well, so there is no inconsistency due
+    to reversing reaction direction relative to the rate constant.
+
     :param rxn_df: reaction DataFrame
     :param src_rxn_df: Source reaction DataFrame
     :return: Reaction DataFrame
     """
     # Add reaction keys
     tmp_col = c_.temp()
-    rxn_df = with_key(rxn_df, tmp_col)
-    src_rxn_df = with_key(src_rxn_df, tmp_col)
+    rxn_df = with_key(rxn_df, tmp_col, reversible=True)
+    src_rxn_df = with_key(src_rxn_df, tmp_col, reversible=True)
 
     # Update
     rxn_df = df_.update(rxn_df, src_rxn_df, col_=tmp_col)
@@ -179,6 +182,9 @@ def left_update(
 ) -> polars.DataFrame:
     """Left-update reaction data by reaction key.
 
+    Note: Reactants and products are updated as well, so there is no inconsistency due
+    to reversing reaction direction relative to the rate constant.
+
     :param rxn_df: reaction DataFrame
     :param src_rxn_df: Source reaction DataFrame
     :param drop_orig: Whether to drop original column values
@@ -186,8 +192,8 @@ def left_update(
     """
     # Add reaction keys
     tmp_col = c_.temp()
-    rxn_df = with_key(rxn_df, tmp_col)
-    src_rxn_df = with_key(src_rxn_df, tmp_col)
+    rxn_df = with_key(rxn_df, tmp_col, reversible=True)
+    src_rxn_df = with_key(src_rxn_df, tmp_col, reversible=True)
 
     # Update
     rxn_df = df_.left_update(rxn_df, src_rxn_df, col_=tmp_col, drop_orig=drop_orig)
@@ -213,7 +219,7 @@ def add_missing_reactions_by_id(
     # Sort reagents
     id_cols = c_.prefix(ID_COLS, c_.temp())
     rxn_df = with_sorted_reagents(
-        rxn_df, col_=ID_COLS, col_out_=id_cols, cross_sort=True
+        rxn_df, col_=ID_COLS, col_out_=id_cols, reversible=True
     )
 
     # Add match index column
@@ -238,7 +244,7 @@ def drop_self_reactions(rxn_df: polars.DataFrame) -> polars.DataFrame:
     pcol0 = Reaction.products
     rcol, pcol = c_.prefix((rcol0, pcol0), c_.temp())
     rxn_df = with_sorted_reagents(
-        rxn_df, col_=(rcol0, pcol0), col_out_=(rcol, pcol), cross_sort=False
+        rxn_df, col_=(rcol0, pcol0), col_out_=(rcol, pcol), reversible=False
     )
     rxn_df = rxn_df.filter(polars.col(rcol) != polars.col(pcol))
     return rxn_df.drop(rcol, pcol)
@@ -249,7 +255,7 @@ def with_key(
     rxn_df: polars.DataFrame,
     col: str = "key",
     spc_df: polars.DataFrame | None = None,
-    cross_sort: bool | str = False,
+    reversible: bool | str = False,
     stereo: bool = True,
 ) -> polars.DataFrame:
     """Add a key for identifying unique reactions to this DataFrame.
@@ -262,8 +268,9 @@ def with_key(
     :param rxn_df: Reactions DataFrame
     :param col: Column name
     :param spc_df: Optional species DataFrame, for using unique species IDs
-    :param cross_sort: Whether to sort the reaction direction
-        Can be Boolean column indicating where to cross-sort.
+    :param reversibe: Whether reactions are reversible, in which case the reagents will
+        be cross-sorted to a canonical direction. Can be specified by a Boolean column
+        indicating which reactions are reversible.
     :param stereo: Whether to include stereochemistry
     :return: A reactions DataFrame with this key as a new column
     """
@@ -291,7 +298,7 @@ def with_key(
         rxn_df,
         col_=[rct_col0, prd_col0],
         col_out_=[rct_col, prd_col],
-        cross_sort=cross_sort,
+        reversible=reversible,
     )
 
     # Concatenate
@@ -309,8 +316,8 @@ def with_duplicate_column(rxn_df: polars.DataFrame, col: str) -> polars.DataFram
     :return: Reactions DataFrame
     """
     tmp_col = c_.temp()
-    cross_sort = ReactionRate.reversible if ReactionRate.reversible in rxn_df else True
-    rxn_df = with_key(rxn_df, col=tmp_col, cross_sort=cross_sort)
+    reversible = ReactionRate.reversible if ReactionRate.reversible in rxn_df else True
+    rxn_df = with_key(rxn_df, col=tmp_col, reversible=reversible)
     rxn_df = rxn_df.with_columns(polars.col(tmp_col).is_duplicated().alias(col))
     return rxn_df.drop(tmp_col)
 
@@ -319,22 +326,23 @@ def with_sorted_reagents(
     rxn_df: polars,
     col_: Sequence[str] = (Reaction.reactants, Reaction.products),
     col_out_: Sequence[str] | None = None,
-    cross_sort: bool | str = False,
+    reversible: bool | str = False,
 ) -> polars.DataFrame:
     """Generate sorted reagents columns.
 
     :param rxn_df: Reactions DataFrame
     :param col_: Reactant and product column(s)
     :param col_out_: Output reactant and product column(s), if different from input
-    :param cross_sort: Whether to sort the reaction direction
-        Can be Boolean column indicating where to cross-sort.
+    :param reversibe: Whether reactions are reversible, in which case the reagents will
+        be cross-sorted to a canonical direction. Can be specified by a Boolean column
+        indicating which reactions are reversible.
     :return: Reactions DataFrame
     """
     col_out_ = col_ if col_out_ is None else col_out_
     assert len(col_) == 2, f"len({col_}) != 2"
     assert len(col_out_) == 2, f"len({col_out_}) != 2"
     return df_.with_sorted_columns(
-        rxn_df, col_=col_, col_out_=col_out_, cross_sort=cross_sort
+        rxn_df, col_=col_, col_out_=col_out_, cross_sort=reversible
     )
 
 

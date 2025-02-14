@@ -4,8 +4,6 @@ from . import io, net, reaction, species, util
 from ._mech import (
     Mechanism,
     are_equivalent,
-    combine_all,
-    difference,
     display,
     display_reactions,
     display_species,
@@ -17,7 +15,7 @@ from ._mech import (
     from_network,
     from_smiles,
     from_string,
-    intersection,
+    left_update,
     neighborhood,
     network,
     reaction_count,
@@ -26,9 +24,7 @@ from ._mech import (
     species_count,
     species_names,
     string,
-    update,
     with_comparison_rate_objects,
-    with_intersection_columns,
     with_key,
     with_rate_objects,
     with_sort_data,
@@ -61,11 +57,7 @@ __all__ = [
     "with_comparison_rate_objects",
     "expand_stereo",
     # binary operations
-    "combine_all",
-    "intersection",
-    "difference",
-    "update",
-    "with_intersection_columns",
+    "left_update",
     # parent
     "expand_parent_stereo",
     # building
