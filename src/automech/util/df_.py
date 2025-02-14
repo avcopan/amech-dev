@@ -105,29 +105,57 @@ def update(
     df1: polars.DataFrame,
     df2: polars.DataFrame,
     col_: str | Sequence[str],
+    drop_orig: bool = True,
+    how: str = "full",
 ) -> polars.DataFrame:
     """Update one DataFrame by another.
 
-    Removes overlapping data from first DataFrame and inserts all data from second
-    DataFrame.
+    By default, this is a full update merging all data from both mechanisms with
+    priority given to the second one. This behavior can be modified by selecting
+    different polars join strategy via the `how` keyword.
 
     :param df1: First DataFrame
     :param df2: Second DataFrame
     :param col_: Column(s) to join on
+    :param drop_orig: Whether to drop the original column values
+    :param how: Polars join strategy
     :return: DataFrame
     """
     col_ = c_.normalize_column_argument(col_)
 
     # Form join columns (needed if multiple are used)
-    key_col = c_.temp()
-    df1 = with_concat_string_column(df1, key_col, col_)
-    df2 = with_concat_string_column(df2, key_col, col_)
+    join_col = c_.temp()
+    df1 = with_concat_string_column(df1, join_col, col_)
+    df2 = with_concat_string_column(df2, join_col, col_)
 
-    int_col = c_.temp()
-    df1 = with_intersection_column(df1, df2, key_col, col=int_col)
-    df1 = df1.filter(~polars.col(int_col))
-    df1 = polars.concat([df1, df2], how="diagonal_relaxed")
-    df1 = df1.drop(int_col, key_col)
+    # Cast to a common schema
+    schema = polars.concat([df1, df2], how="diagonal_relaxed").schema
+    schema1 = {c: t for c, t in schema.items() if c in df1.columns}
+    schema2 = {c: t for c, t in schema.items() if c in df2.columns}
+    df1 = df1.cast(schema1, strict=False)
+    df2 = df2.cast(schema2, strict=False)
+
+    # Join, adding suffix to identify overlapping columns
+    suff = f"_{c_.temp()}"
+    df1 = df1.join(df2, on=join_col, how=how, suffix=suff)
+    df1 = df1.drop(join_col, f"{join_col}{suff}", strict=False)
+
+    # Handle overlapping column values
+    for col in s_.expand_selector(df1, s_.ends_with(suff)):
+        col0 = col.removesuffix(suff)
+
+        # If requested to keep original values, back them up
+        if not drop_orig:
+            df1 = df1.with_columns(polars.col(col0).alias(c_.orig(col0)))
+
+        # Overwrite original values where update values are not null
+        df1 = df1.with_columns(
+            polars.when(polars.col(col).is_not_null())
+            .then(polars.col(col))
+            .otherwise(polars.col(col0))
+            .alias(col0)
+        ).drop(col)
+
     return df1
 
 
@@ -145,34 +173,7 @@ def left_update(
     :param drop_orig: Whether to drop the original column values
     :return: DataFrame
     """
-    col_ = c_.normalize_column_argument(col_)
-
-    # Form join columns (needed if multiple are used)
-    join_col = c_.temp()
-    df1 = with_concat_string_column(df1, join_col, col_)
-    df2 = with_concat_string_column(df2, join_col, col_)
-
-    # Join, adding suffix to identify overlapping columns
-    suff = f"_{c_.temp()}"
-    df1 = df1.join(df2, join_col, how="left", suffix=suff)
-    df1 = df1.drop(join_col)
-
-    # Handle overlapping column values
-    for col in s_.expand_selector(df1, s_.ends_with(suff)):
-        col0 = col.removesuffix(suff)
-
-        # If requested to keep original values, back them up
-        if not drop_orig:
-            df1 = df1.with_columns(polars.col(col0).alias(c_.orig(col0)))
-
-        # Overwrite original values where update values are not null
-        df1 = df1.with_columns(
-            polars.when(polars.col(col).is_not_null())
-            .then(polars.col(col))
-            .otherwise(polars.col(col0))
-        ).drop(col)
-
-    return df1
+    return update(df1, df2, col_=col_, drop_orig=drop_orig, how="left")
 
 
 def with_match_index_column(

@@ -90,35 +90,39 @@ def amchis(
 
 # update
 def update(
-    spc_df: polars.DataFrame,
-    src_spc_df: polars.DataFrame,
+    spc_df1: polars.DataFrame,
+    spc_df2: polars.DataFrame,
     key_col_: str | Sequence[str] = KEY_COLS,
+    drop_orig: bool = True,
+    how: str = "full",
 ) -> polars.DataFrame:
     """Update species data by species key.
 
-    :param spc_df: Species DataFrame
-    :param src_spc_df: Source species DataFrame
+    :param spc_df1: Species DataFrame
+    :param spc_df1: Species DataFrame to update from
     :param key_col_: Species key column(s)
+    :param drop_orig: Whether to drop the original column values
+    :param how: Polars join strategy
     :return: Species DataFrame
     """
-    return df_.update(spc_df, src_spc_df, col_=key_col_)
+    return df_.update(spc_df1, spc_df2, col_=key_col_, drop_orig=drop_orig, how=how)
 
 
 def left_update(
-    spc_df: polars.DataFrame,
-    src_spc_df: polars.DataFrame,
+    spc_df1: polars.DataFrame,
+    spc_df2: polars.DataFrame,
     key_col_: str | Sequence[str] = KEY_COLS,
     drop_orig: bool = True,
 ) -> polars.DataFrame:
     """Left-update species data by species key.
 
-    :param spc_df: Species DataFrame
-    :param src_spc_df: Source species DataFrame
+    :param spc_df1: Species DataFrame
+    :param spc_df1: Species DataFrame to update from
     :param key_col_: Species key column(s)
     :param drop_orig: Whether to drop the original column values
     :return: Species DataFrame
     """
-    return df_.left_update(spc_df, src_spc_df, col_=key_col_, drop_orig=drop_orig)
+    return update(spc_df1, spc_df2, key_col_=key_col_, drop_orig=drop_orig, how="left")
 
 
 # add columns

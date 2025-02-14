@@ -614,23 +614,32 @@ def expand_stereo(
 
 
 # binary operations
-def update(mech1: Mechanism, mech2: Mechanism) -> Mechanism:
-    """Update mechanism data by species and reaction key.
+def update(
+    mech1: Mechanism, mech2: Mechanism, drop_orig: bool = True, how: str = "full"
+) -> Mechanism:
+    """Left-update mechanism data by species and reaction key.
 
-    The result is a combination of the two mechanisms.  Any overlapping species or
-    reactions will be replaced with those of the second mechanism.
+    Any overlapping species or reactions will be replaced with those of the second
+    mechanism.
+
+    Warning: Not all join strategies will result in a consistent mechanism.
 
     :param mech1: First mechanism
     :param mech2: Second mechanism
     :param drop_orig: Whether to drop the original column values
+    :param how: Polars join strategy
     :return: Mechanism
     """
     mech = mech1.model_copy()
     name_dct, *_ = rename_dict(mech1, mech2)
     mech = rename(mech, name_dct)
 
-    mech.species = species.update(mech.species, mech2.species)
-    mech.reactions = reaction.update(mech.reactions, mech2.reactions)
+    mech.species = species.update(
+        mech.species, mech2.species, drop_orig=drop_orig, how=how
+    )
+    mech.reactions = reaction.update(
+        mech.reactions, mech2.reactions, drop_orig=drop_orig, how=how
+    )
     return mech
 
 
@@ -647,15 +656,7 @@ def left_update(
     :param drop_orig: Whether to drop the original column values
     :return: Mechanism
     """
-    mech = mech1.model_copy()
-    name_dct, *_ = rename_dict(mech1, mech2)
-    mech = rename(mech, name_dct)
-
-    mech.species = species.left_update(mech.species, mech2.species, drop_orig=drop_orig)
-    mech.reactions = reaction.left_update(
-        mech.reactions, mech2.reactions, drop_orig=drop_orig
-    )
-    return mech
+    return update(mech1, mech2, drop_orig=drop_orig, how="left")
 
 
 # parent

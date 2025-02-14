@@ -138,47 +138,47 @@ def reagent_strings(
 
 
 # update
-def update(rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame) -> polars.DataFrame:
+def update(
+    rxn_df1: polars.DataFrame,
+    rxn_df2: polars.DataFrame,
+    drop_orig: bool = True,
+    how: str = "full",
+) -> polars.DataFrame:
     """Update reaction data by reaction key.
 
     Note: Reactants and products are updated as well, so there is no inconsistency due
     to reversing reaction direction relative to the rate constant.
 
-    :param rxn_df: reaction DataFrame
-    :param src_rxn_df: Source reaction DataFrame
+    :param rxn_df1: Reaction DataFrame
+    :param rxn_df2: Reaction DataFrame to update from
+    :param drop_orig: Whether to drop original column values
+    :param how: Polars join strategy
     :return: Reaction DataFrame
     """
     # Add reaction keys
     tmp_col = c_.temp()
-    rxn_df = with_key(rxn_df, tmp_col, reversible=True)
-    src_rxn_df = with_key(src_rxn_df, tmp_col, reversible=True)
+    rxn_df1 = with_key(rxn_df1, tmp_col, reversible=True)
+    rxn_df2 = with_key(rxn_df2, tmp_col, reversible=True)
 
     # Update
-    rxn_df = df_.update(rxn_df, src_rxn_df, col_=tmp_col)
-    return rxn_df.drop(tmp_col)
+    rxn_df1 = df_.update(rxn_df1, rxn_df2, col_=tmp_col, drop_orig=drop_orig, how=how)
+    return rxn_df1.drop(tmp_col)
 
 
 def left_update(
-    rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame, drop_orig: bool = True
+    rxn_df1: polars.DataFrame, rxn_df2: polars.DataFrame, drop_orig: bool = True
 ) -> polars.DataFrame:
     """Left-update reaction data by reaction key.
 
     Note: Reactants and products are updated as well, so there is no inconsistency due
     to reversing reaction direction relative to the rate constant.
 
-    :param rxn_df: reaction DataFrame
-    :param src_rxn_df: Source reaction DataFrame
+    :param rxn_df1: Reaction DataFrame
+    :param rxn_df2: Reaction DataFrame to update from
     :param drop_orig: Whether to drop original column values
     :return: Reaction DataFrame
     """
-    # Add reaction keys
-    tmp_col = c_.temp()
-    rxn_df = with_key(rxn_df, tmp_col, reversible=True)
-    src_rxn_df = with_key(src_rxn_df, tmp_col, reversible=True)
-
-    # Update
-    rxn_df = df_.left_update(rxn_df, src_rxn_df, col_=tmp_col, drop_orig=drop_orig)
-    return rxn_df.drop(tmp_col)
+    return update(rxn_df1, rxn_df2, drop_orig=drop_orig, how="left")
 
 
 # add/remove rows
