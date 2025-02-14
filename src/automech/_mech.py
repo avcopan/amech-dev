@@ -192,14 +192,15 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
     match_cols = [Species.amchi, Species.spin, Species.charge]
 
     # Read in species and names
-    spc1_df = mech1.species.rename(c_.to_orig(Species.name))
+    col_dct = c_.to_(Species.name, c_.temp())
+    spc1_df = mech1.species.rename(col_dct)
     spc2_df = mech2.species.select([Species.name, *match_cols])
 
     # Get names from first mechanism that are included/excluded in second
     incl_spc_df = spc1_df.join(spc2_df, on=match_cols, how="inner")
     excl_spc_df = spc1_df.join(spc2_df, on=match_cols, how="anti")
 
-    orig_col = c_.orig(Species.name)
+    (orig_col,) = col_dct.values()
     name_dct = df_.lookup_dict(incl_spc_df, orig_col, Species.name)
     missing_names = excl_spc_df.get_column(orig_col).to_list()
     return name_dct, missing_names
@@ -613,10 +614,30 @@ def expand_stereo(
 
 
 # binary operations
+def update(mech1: Mechanism, mech2: Mechanism) -> Mechanism:
+    """Update mechanism data by species and reaction key.
+
+    The result is a combination of the two mechanisms.  Any overlapping species or
+    reactions will be replaced with those of the second mechanism.
+
+    :param mech1: First mechanism
+    :param mech2: Second mechanism
+    :param drop_orig: Whether to drop the original column values
+    :return: Mechanism
+    """
+    mech = mech1.model_copy()
+    name_dct, *_ = rename_dict(mech1, mech2)
+    mech = rename(mech, name_dct)
+
+    mech.species = species.update(mech.species, mech2.species)
+    mech.reactions = reaction.update(mech.reactions, mech2.reactions)
+    return mech
+
+
 def left_update(
     mech1: Mechanism, mech2: Mechanism, drop_orig: bool = True
 ) -> Mechanism:
-    """Update one mechanism with names and data from another.
+    """Left-update mechanism data by species and reaction key.
 
     Any overlapping species or reactions will be replaced with those of the second
     mechanism.
@@ -627,15 +648,10 @@ def left_update(
     :return: Mechanism
     """
     mech = mech1.model_copy()
+    name_dct, *_ = rename_dict(mech1, mech2)
+    mech = rename(mech, name_dct)
 
-    col0 = Species.name
-    col = c_.prefix(col0, c_.temp())
-    mech.species = mech.species.with_columns(polars.col(col0).alias(col))
     mech.species = species.left_update(mech.species, mech2.species, drop_orig=drop_orig)
-    mech.reactions = reaction.rename(
-        mech.reactions, mech.species[col0], mech.species[col], drop_orig=drop_orig
-    )
-    mech.species = mech.species.drop(col)
     mech.reactions = reaction.left_update(
         mech.reactions, mech2.reactions, drop_orig=drop_orig
     )
@@ -748,7 +764,7 @@ def enumerate_reactions(
     :param mech: Mechanism
     :param smarts: SMARTS reaction template
     :param rcts_: Reactants to be used in enumeration (see above)
-    :param spc_key_: Species column key(s) for identifying reactants and products
+    :param spc_col_: Species column(s) for identifying reactants and products
     :param src_mech: Optional source mechanism for species names and data
     :param repeat: Number of times to repeat the enumeration
     :param drop_self_rxns: Whether to drop self-reactions
@@ -781,7 +797,7 @@ def _enumerate_reactions(
     :param mech: Mechanism
     :param smarts: SMARTS reaction template
     :param rcts_: Reactants to be used in enumeration (see above)
-    :param spc_key_: Species column key(s) for identifying reactants and products
+    :param spc_col_: Species column(s) for identifying reactants and products
     :param src_mech: Optional source mechanism for species names and data
     :return: Mechanism with enumerated reactions
     """
@@ -792,42 +808,40 @@ def _enumerate_reactions(
 
     # Process reactants argument
     mech = mech.model_copy()
-    spc_pool = df_.values(mech.species, spc_col_)
-    rcts_ = [spc_pool if r is None else [r] if isinstance(r, str) else r for r in rcts_]
+    pool = df_.values(mech.species, spc_col_)
+    rcts_vals_ = [
+        pool if r is None else [r] if isinstance(r, str) else r for r in rcts_
+    ]
 
     # Enumerate reactions
-    rxn_spc_ids = []
-    for rcts in itertools.product(*rcts_):
-        rct_spc_ids = species.species_ids(
-            mech.species, rcts, col_=spc_col_, try_fill=True
+    rxn_chis = []
+    for rct_vals_ in itertools.product(*rcts_vals_):
+        rct_chis = species.amchis(
+            mech.species, vals_=rct_vals_, col_=spc_col_, fill=True
         )
-        rct_chis, *_ = zip(*rct_spc_ids, strict=True)
         for rxn in automol.reac.enum.from_amchis(smarts, rct_chis):
             _, prd_chis = automol.reac.amchis(rxn)
-            prd_spc_ids = species.species_ids(
-                mech.species, prd_chis, col_=Species.amchi, try_fill=True
-            )
-            rxn_spc_ids.append((rct_spc_ids, prd_spc_ids))
+            rxn_chis.append((rct_chis, prd_chis))
 
     # Form the updated species DataFrame
-    spc_ids = list(itertools.chain.from_iterable(r + p for r, p in rxn_spc_ids))
-    spc_ids = list(mit.unique_everseen(spc_ids))
-    mech.species = species.add_missing_species_by_id(mech.species, spc_ids)
-    mech.species = (
-        mech.species
-        if src_mech is None
-        else species.left_update(mech.species, src_mech.species)
-    )
+    chis = list(itertools.chain.from_iterable([*r, *p] for r, p in rxn_chis))
+    chis = list(mit.unique_everseen(chis))
+    spc_df = species.bootstrap({Species.amchi: chis})
+    mech.species = species.update(spc_df, mech.species)
+    if src_mech is not None:
+        mech.species = species.left_update(mech.species, src_mech.species)
 
     # Form the updated reactions DataFrame
-    spc_names = species.species_names_by_id(mech.species, spc_ids)
-    name_ = dict(zip(spc_ids, spc_names, strict=True)).get
-    rxn_ids = [[list(map(name_, r)) for r in rs] for rs in rxn_spc_ids]
-    rxn_ids = list(mit.unique_everseen(rxn_ids))
-    mech.reactions = reaction.add_missing_reactions_by_id(
-        mech.reactions, rxn_ids, spc_df=mech.species
+    rct_chis, prd_chis = zip(*rxn_chis, strict=True)
+    name_dct = df_.lookup_dict(mech.species, Species.amchi, Species.name)
+    rxn_df = reaction.bootstrap(
+        {Reaction.reactants: rct_chis, Reaction.products: prd_chis},
+        name_dct=name_dct,
+        spc_df=mech.species,
     )
-    mech = mech if src_mech is None else left_update(mech, src_mech)
+    mech.reactions = reaction.update(rxn_df, mech.reactions)
+    if src_mech is not None:
+        mech.reactions = reaction.left_update(mech.reactions, src_mech.reactions)
     return drop_duplicate_reactions(mech)
 
 

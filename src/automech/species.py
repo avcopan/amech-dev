@@ -1,7 +1,7 @@
 """Functions acting on species DataFrames."""
 
 from collections.abc import Mapping, Sequence
-from typing import Annotated, TypeAlias
+from typing import Annotated
 
 import automol
 import polars
@@ -37,8 +37,7 @@ class SpeciesStereo(Model):
     orig_amchi: str
 
 
-ID_COLS = (Species.amchi, Species.spin, Species.charge)
-SpeciesId: TypeAlias = tuple[str, int, int]
+KEY_COLS = (Species.amchi, Species.spin, Species.charge)
 
 
 # validation
@@ -67,12 +66,12 @@ SpeciesDataFrame_ = Annotated[
 
 
 # properties
-def species_ids(
+def amchis(
     spc_df: polars.DataFrame,
     vals_: Sequence[object | Sequence[object]] | None = None,
     col_: str | Sequence[str] = Species.name,
-    try_fill: bool = False,
-) -> list[SpeciesId]:
+    fill: bool = False,
+) -> list[str]:
     """Get IDs for a species DataFrame.
 
     :param spc_df: Species DataFrame
@@ -81,40 +80,21 @@ def species_ids(
     :param try_fill: Whether to attempt to fill missing values
     :return: Species IDs
     """
-    spc_id_col_ = ID_COLS
-    vals_, col_ = normalize_values_arguments(vals_, col_)
-    vals_out_ = df_.values(spc_df, spc_id_col_, vals_in_=vals_, col_in_=col_)
+    vals_lst, cols = normalize_values_arguments(vals_, col_)
+    chis = df_.values(spc_df, Species.amchi, vals_in_=vals_lst, col_in_=cols)
+    if fill and cols[0] == Species.amchi:
+        chis = [v[0] for v in vals_lst]
 
-    spc_ids = []
-    for val_, val_out_ in zip(vals_, vals_out_, strict=True):
-        spc_ids.append(
-            species_id_fill_value(val_, col_)
-            if try_fill and not any(val_out_)
-            else val_out_
-        )
-    return list(map(tuple, spc_ids))
-
-
-def species_names_by_id(
-    spc_df: polars.DataFrame, spc_ids: Sequence[SpeciesId]
-) -> list[str]:
-    """Get species names by ID from a species DataFrame.
-
-    :param spc_df: Species DataFrame
-    :param spc_ids: Species IDs (AMChI, spin, charge)
-    :return: Species names
-    """
-    spc_id_col_ = ID_COLS
-    return df_.values(spc_df, Species.name, vals_in_=spc_ids, col_in_=spc_id_col_)
+    return chis
 
 
 # update
 def update(
     spc_df: polars.DataFrame,
     src_spc_df: polars.DataFrame,
-    key_col_: str | Sequence[str] = ID_COLS,
+    key_col_: str | Sequence[str] = KEY_COLS,
 ) -> polars.DataFrame:
-    """Left-update species data by species key.
+    """Update species data by species key.
 
     :param spc_df: Species DataFrame
     :param src_spc_df: Source species DataFrame
@@ -127,7 +107,7 @@ def update(
 def left_update(
     spc_df: polars.DataFrame,
     src_spc_df: polars.DataFrame,
-    key_col_: str | Sequence[str] = ID_COLS,
+    key_col_: str | Sequence[str] = KEY_COLS,
     drop_orig: bool = True,
 ) -> polars.DataFrame:
     """Left-update species data by species key.
@@ -139,26 +119,6 @@ def left_update(
     :return: Species DataFrame
     """
     return df_.left_update(spc_df, src_spc_df, col_=key_col_, drop_orig=drop_orig)
-
-
-# add rows
-def add_missing_species_by_id(
-    spc_df: polars.DataFrame, spc_ids: Sequence[SpeciesId]
-) -> polars.DataFrame:
-    """Add missing species to a species DataFrame.
-
-    :param spc_df: Species DataFrame
-    :param spc_ids: Species IDs
-    :return: Species DataFrame
-    """
-    id_col_ = ID_COLS
-    idx_col = c_.temp()
-    spc_df = df_.with_match_index_column(spc_df, idx_col, vals_=spc_ids, col_=id_col_)
-
-    miss_spc_ids = [s for i, s in enumerate(spc_ids) if i not in spc_df[idx_col]]
-    miss_spc_df = polars.DataFrame(miss_spc_ids, schema=id_col_, orient="row")
-    miss_spc_df = bootstrap(miss_spc_df)
-    return polars.concat([spc_df.drop(idx_col), miss_spc_df], how="diagonal_relaxed")
 
 
 # add columns
@@ -174,7 +134,7 @@ def with_key(
     :param stereo: Whether to include stereochemistry
     :return: Species DataFrame
     """
-    id_cols = ID_COLS
+    id_cols = KEY_COLS
 
     tmp_col = c_.temp()
     if not stereo:
@@ -278,6 +238,8 @@ def normalize_values_arguments(
 ) -> tuple[list[object], list[str]]:
     """Normalize species values input.
 
+    Converts SMILES to AMChI if present.
+
     :param vals_: Optionally, lookup IDs for species matching these column value(s)
     :param col_: Column name(s) corresponding to `vals_`
     :return: Normalized value(s) list and column(s)
@@ -294,27 +256,6 @@ def normalize_values_arguments(
             vals_ = list(zip(*col_vals_, strict=True))
 
     return vals_, col_
-
-
-def species_id_fill_value(
-    val_: Sequence[object | Sequence[object]] | None = None,
-    col_: str | Sequence[str] = Species.name,
-) -> SpeciesId:
-    """Calculate an appropriate fill value for a species ID.
-
-    :param val_: Column value(s)
-    :param col_: Column name(s)
-    :return: Species ID
-    """
-    dct = dict(zip(col_, val_, strict=True))
-    amchi = (
-        automol.smiles.amchi(dct[Species.smiles])
-        if Species.smiles in dct
-        else dct.get(Species.amchi)
-    )
-    spin = dct[Species.spin] if Species.spin in dct else automol.amchi.guess_spin(amchi)
-    charge = dct[Species.charge] if Species.charge in dct else 0
-    return (amchi, spin, charge)
 
 
 def expand_stereo(

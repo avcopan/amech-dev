@@ -24,6 +24,7 @@ from ._mech import (
     species_count,
     species_names,
     string,
+    update,
     with_comparison_rate_objects,
     with_key,
     with_rate_objects,
@@ -57,6 +58,7 @@ __all__ = [
     "with_comparison_rate_objects",
     "expand_stereo",
     # binary operations
+    "update",
     "left_update",
     # parent
     "expand_parent_stereo",

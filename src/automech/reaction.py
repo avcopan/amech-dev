@@ -3,7 +3,7 @@
 import functools
 import itertools
 from collections.abc import Mapping, Sequence
-from typing import Annotated, TypeAlias
+from typing import Annotated
 
 import autochem
 import automol
@@ -65,10 +65,6 @@ class ReactionError(Model):
     has_unbalanced_formula: bool
 
 
-ID_COLS = (Reaction.reactants, Reaction.products)
-ReactionId: TypeAlias = tuple[list[str], list[str]]
-
-
 # validation
 def validate(
     df: polars.DataFrame, model_: Model | Sequence[Model] = (), sort: bool = True
@@ -96,21 +92,6 @@ ReactionDataFrame_ = Annotated[
 
 
 # properties
-def reaction_ids(
-    rxn_df: polars.DataFrame, cross_sort: bool | str = True
-) -> list[ReactionId]:
-    """Get IDs for a reactions DataFrame.
-
-    :param rxn_df: Species DataFrame
-    :param cross_sort: Whether to make keys direction-agnostic by cross-sorting reagents
-        Can be Boolean column indicating where to cross-sort.
-    :return: Reaction IDs
-    """
-    rxn_id_col_ = ID_COLS
-    rxn_df = df_.with_sorted_columns(rxn_df, col_=rxn_id_col_, cross_sort=cross_sort)
-    return rxn_df.select(rxn_id_col_).rows()
-
-
 def has_rates(rxn_df: polars.DataFrame) -> bool:
     """Determine whether a reactions DataFrame has rates.
 
@@ -201,39 +182,6 @@ def left_update(
 
 
 # add/remove rows
-def add_missing_reactions_by_id(
-    rxn_df: polars.DataFrame,
-    rxn_ids: Sequence[ReactionId],
-    spc_df: polars.DataFrame | None = None,
-) -> polars.DataFrame:
-    """Add missing reactions to a reactions DataFrame.
-
-    :param rxn_df: Reactions DataFrame
-    :param rxn_ids: Reaction IDs
-    :param spc_df: Species DataFrame
-    :return: Reactions DataFrame
-    """
-    # Sort reaction IDs
-    rxn_ids = normalize_reaction_ids(rxn_ids)
-
-    # Sort reagents
-    id_cols = c_.prefix(ID_COLS, c_.temp())
-    rxn_df = with_sorted_reagents(
-        rxn_df, col_=ID_COLS, col_out_=id_cols, reversible=True
-    )
-
-    # Add match index column
-    idx_col = c_.temp()
-    rxn_df = df_.with_match_index_column(rxn_df, idx_col, vals_=rxn_ids, col_=id_cols)
-    rxn_df = rxn_df.drop(id_cols)
-
-    # Append missing reactions to reactions DataFrame
-    miss_rxn_ids = [s for i, s in enumerate(rxn_ids) if i not in rxn_df[idx_col]]
-    miss_rxn_df = polars.DataFrame(miss_rxn_ids, schema=ID_COLS, orient="row")
-    miss_rxn_df = bootstrap(miss_rxn_df, spc_df=spc_df)
-    return polars.concat([rxn_df.drop(idx_col), miss_rxn_df], how="diagonal_relaxed")
-
-
 def drop_self_reactions(rxn_df: polars.DataFrame) -> polars.DataFrame:
     """Drop self-reactions from reactions DataFrame.
 
@@ -652,21 +600,6 @@ def with_formula(
 
 
 # helpers
-def normalize_reaction_ids(
-    rxn_ids: Sequence[ReactionId], cross_sort: bool | str = True
-) -> list[ReactionId]:
-    """Normalize a list of reaction IDs.
-
-    :param rxn_ids: Reaction IDs
-    :param cross_sort: Whether to make keys direction-agnostic by cross-sorting reagents
-        Can be Boolean column indicating where to cross-sort.
-    :return: Reaction IDs
-    """
-    return reaction_ids(
-        polars.DataFrame(rxn_ids, schema=ID_COLS, orient="row"), cross_sort=cross_sort
-    )
-
-
 def reactions_match_expression(
     rxns: Sequence[tuple[Sequence[str], Sequence[str]]],
     cols: tuple[str, str] = (Reaction.reactants, Reaction.products),
