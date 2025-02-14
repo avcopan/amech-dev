@@ -280,60 +280,6 @@ def with_sorted_columns(
     return df
 
 
-def with_intersection_columns(
-    df1: polars.DataFrame,
-    df2: polars.DataFrame,
-    comp_col_: str | Sequence[str],
-    comp_col2_: str | Sequence[str] | None = None,
-    col: str = "intersection",
-) -> tuple[polars.DataFrame, polars.DataFrame]:
-    """Add columns to DataFrame pair indicating their intersection.
-
-    :param df1: First DataFrame
-    :param df2: Second DataFrame
-    :param comp_col: Column to compare
-    :param comp_col2: Column from second DataFrame to compare, if different
-    :param col: Name of intersection column
-    :return: First and second DataFrames with intersection columns
-    """
-    comp_col2_ = comp_col_ if comp_col2_ is None else comp_col2_
-    df1 = with_intersection_column(
-        df1, df2, comp_col_=comp_col_, comp_col2_=comp_col2_, col=col
-    )
-    df2 = with_intersection_column(
-        df2, df1, comp_col_=comp_col2_, comp_col2_=comp_col_, col=col
-    )
-    return df1, df2
-
-
-def with_intersection_column(
-    df1: polars.DataFrame,
-    df2: polars.DataFrame,
-    comp_col_: str | Sequence[str],
-    comp_col2_: str | Sequence[str] | None = None,
-    col: str = "intersection",
-) -> polars.DataFrame:
-    """Add a column indicating intersection with another DataFrame.
-
-    :param df1: First DataFrame
-    :param df2: Second DataFrame
-    :param comp_col: Column to compare
-    :param comp_col2: Column from second DataFrame to compare, if different
-    :param col: Name of intersection column
-    :return: First DataFrame with intersection column
-    """
-    comp_col2_ = comp_col_ if comp_col2_ is None else comp_col2_
-    comp_col_, comp_col2_ = map(c_.normalize_column_argument, (comp_col_, comp_col2_))
-    col_dct = dict(zip(comp_col_, comp_col2_, strict=True))
-
-    df1 = df1.with_columns(
-        polars.all_horizontal(
-            *(polars.col(c1).is_in(df2.get_column(c2)) for c1, c2 in col_dct.items())
-        ).alias(col)
-    )
-    return df1
-
-
 def has_values(df: polars.DataFrame) -> bool:
     """Determine if DataFrame has non-null values.
 
