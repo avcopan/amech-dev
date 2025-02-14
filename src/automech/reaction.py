@@ -523,9 +523,7 @@ def bootstrap(
 
     if spc_df is None:
         dtype = pandera_.dtype(Reaction, Reaction.formula)
-        df = df.with_columns(
-            polars.lit({"H": None}, dtype=dtype).alias(Reaction.formula)
-        )
+        df = df.with_columns(polars.lit(None, dtype=dtype).alias(Reaction.formula))
     else:
         df = with_formula(df, spc_df=spc_df)
 

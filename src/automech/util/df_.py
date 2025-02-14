@@ -5,9 +5,10 @@ from pathlib import Path
 
 import polars
 import polars.dataframe
+from polars import selectors as s_
 from tqdm.auto import tqdm
 
-from . import c_ as m_col_
+from . import c_
 
 Key = str
 Keys = Sequence[str]
@@ -36,8 +37,8 @@ def dtype(df: polars.DataFrame, col_: str | Sequence[str]) -> str | list[str]:
     :param col_: Column(s)
     :return: Data type(s)
     """
-    is_bare = m_col_.is_bare_column_argument(col_)
-    col_ = m_col_.normalize_column_argument(col_)
+    is_bare = c_.is_bare_column_argument(col_)
+    col_ = c_.normalize_column_argument(col_)
     dtypes = [df.schema[col] for col in col_]
     return dtypes[0] if is_bare else dtypes
 
@@ -66,8 +67,8 @@ def values(
     :param col_in_: Column(s) corresponding to `vals_in_`
     :return: _description_
     """
-    is_bare = m_col_.is_bare_column_argument(col_)
-    col_ = m_col_.normalize_column_argument(col_)
+    is_bare = c_.is_bare_column_argument(col_)
+    col_ = c_.normalize_column_argument(col_)
 
     vals_ = df.select(*col_).rows()
 
@@ -76,7 +77,7 @@ def values(
         assert vals_in_ is not None and col_in_ is not None, f"{vals_in_} {col_in_}"
         vals_in_, col_in_ = normalize_values_arguments(vals_in_, col_in_)
 
-        idx_col = m_col_.temp()
+        idx_col = c_.temp()
         df = with_match_index_column(df, idx_col, vals_=vals_in_, col_=col_in_)
         df = df.filter(polars.col(idx_col).is_not_null()).unique(idx_col)
         miss_idxs = [
@@ -115,14 +116,14 @@ def update(
     :param col_: Column(s) to join on
     :return: DataFrame
     """
-    col_ = m_col_.normalize_column_argument(col_)
+    col_ = c_.normalize_column_argument(col_)
 
     # Form join columns (needed if multiple are used)
-    key_col = m_col_.temp()
+    key_col = c_.temp()
     df1 = with_concat_string_column(df1, key_col, col_)
     df2 = with_concat_string_column(df2, key_col, col_)
 
-    int_col = m_col_.temp()
+    int_col = c_.temp()
     df1 = with_intersection_column(df1, df2, key_col, col=int_col)
     df1 = df1.filter(~polars.col(int_col))
     df1 = polars.concat([df1, df2], how="diagonal_relaxed")
@@ -144,35 +145,32 @@ def left_update(
     :param drop_orig: Whether to drop the original column values
     :return: DataFrame
     """
-    col_ = m_col_.normalize_column_argument(col_)
+    col_ = c_.normalize_column_argument(col_)
 
     # Form join columns (needed if multiple are used)
-    tmp_col = m_col_.temp()
-    df1 = with_concat_string_column(df1, tmp_col, col_)
-    df2 = with_concat_string_column(df2, tmp_col, col_)
+    join_col = c_.temp()
+    df1 = with_concat_string_column(df1, join_col, col_)
+    df2 = with_concat_string_column(df2, join_col, col_)
 
-    # Identify column name clashes
-    clash_cols = set(df1.columns) & set(df2.columns) - {tmp_col}
-    clash_dct = m_col_.to_(clash_cols, m_col_.temp())
+    # Join, adding suffix to identify overlapping columns
+    suff = f"_{c_.temp()}"
+    df1 = df1.join(df2, join_col, how="left", suffix=suff)
+    df1 = df1.drop(join_col)
 
-    # Rename to avoid clashes and join
-    df1 = df1.rename(clash_dct)
-    df1 = df1.join(df2, tmp_col, how="left")
+    # Handle overlapping column values
+    for col in s_.expand_selector(df1, s_.ends_with(suff)):
+        col0 = col.removesuffix(suff)
 
-    # Fill nulls from join with their original values
-    df1 = df1.with_columns(
-        polars.col(c0).fill_null(polars.col(c).cast(dtype(df1, c0), strict=False))
-        for c0, c in clash_dct.items()
-    )
-    df1 = df1.drop(tmp_col)
+        # If requested to keep original values, back them up
+        if not drop_orig:
+            df1 = df1.with_columns(polars.col(col0).alias(c_.orig(col0)))
 
-    # If requested, drop the `orig` column values
-    if drop_orig:
-        df1 = df1.drop(clash_dct.values(), strict=True)
-    else:
-        orig_dct = {c: m_col_.orig(c0) for c0, c in clash_dct.items()}
-        df1 = df1.drop(orig_dct.values(), strict=False)
-        df1 = df1.rename(orig_dct)
+        # Overwrite original values where update values are not null
+        df1 = df1.with_columns(
+            polars.when(polars.col(col).is_not_null())
+            .then(polars.col(col))
+            .otherwise(polars.col(col0))
+        ).drop(col)
 
     return df1
 
@@ -195,7 +193,7 @@ def with_match_index_column(
     """
     vals_, col_ = normalize_values_arguments(vals_, col_)
 
-    tmp_col = m_col_.temp()
+    tmp_col = c_.temp()
 
     # Form DataFrame with concatenated values and indices
     val_data = dict(zip(col_, zip(*vals_, strict=True), strict=True))
@@ -249,8 +247,8 @@ def with_sorted_columns(
     """
     # Process arguments
     col_out_ = col_ if col_out_ is None else col_out_
-    col_ = m_col_.normalize_column_argument(col_)
-    col_out_ = m_col_.normalize_column_argument(col_out_)
+    col_ = c_.normalize_column_argument(col_)
+    col_out_ = c_.normalize_column_argument(col_out_)
     assert len(col_) == len(col_out_), f"{col_} !~ {col_out_}"
     assert all(df.schema[c].base_type() is polars.List for c in col_)
 
@@ -262,7 +260,7 @@ def with_sorted_columns(
         # Convert lists to structs to make them sortable
         df = list_to_struct(df, col_out_)
         # Combine columns into a temp list column for sorting
-        srt_col = m_col_.temp()
+        srt_col = c_.temp()
         df = df.with_columns(polars.concat_list(col_out_).alias(srt_col))
         # Sort
         df = df.with_columns(
@@ -324,9 +322,7 @@ def with_intersection_column(
     :return: First DataFrame with intersection column
     """
     comp_col2_ = comp_col_ if comp_col2_ is None else comp_col2_
-    comp_col_, comp_col2_ = map(
-        m_col_.normalize_column_argument, (comp_col_, comp_col2_)
-    )
+    comp_col_, comp_col2_ = map(c_.normalize_column_argument, (comp_col_, comp_col2_))
     col_dct = dict(zip(comp_col_, comp_col2_, strict=True))
 
     df1 = df1.with_columns(
@@ -488,7 +484,7 @@ def normalize_values_arguments(
     :param col_: Column(s)
     :return: Normalized value(s) list and column(s)
     """
-    is_bare = m_col_.is_bare_column_argument(col_)
+    is_bare = c_.is_bare_column_argument(col_)
     col_ = [col_] if is_bare else list(col_)
     vals_ = [[v] for v in vals_] if is_bare else list(vals_)
     return vals_, col_
@@ -535,8 +531,8 @@ def list_to_struct(
     """
     # Process arguments
     col_out_ = col_ if col_out_ is None else col_out_
-    col_ = m_col_.normalize_column_argument(col_)
-    col_out_ = m_col_.normalize_column_argument(col_out_)
+    col_ = c_.normalize_column_argument(col_)
+    col_out_ = c_.normalize_column_argument(col_out_)
     assert len(col_) == len(col_out_), f"{col_} !~ {col_out_}"
     assert all(df.schema[c].base_type() is polars.List for c in col_)
     # Convert list to struct
@@ -577,8 +573,8 @@ def struct_to_list(
     """
     # Process arguments
     col_out_ = col_ if col_out_ is None else col_out_
-    col_ = m_col_.normalize_column_argument(col_)
-    col_out_ = m_col_.normalize_column_argument(col_out_)
+    col_ = c_.normalize_column_argument(col_)
+    col_out_ = c_.normalize_column_argument(col_out_)
     assert len(col_) == len(col_out_), f"{col_} !~ {col_out_}"
     assert all(df.schema[c].base_type() is polars.Struct for c in col_)
     # Convert struct to list
