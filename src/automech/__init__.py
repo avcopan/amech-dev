@@ -4,6 +4,7 @@ from . import io, net, reaction, species, util
 from ._mech import (
     Mechanism,
     are_equivalent,
+    combine_all,
     display,
     display_reactions,
     display_species,
@@ -60,6 +61,8 @@ __all__ = [
     # binary operations
     "update",
     "left_update",
+    # sequence operations
+    "combine_all",
     # parent
     "expand_parent_stereo",
     # building

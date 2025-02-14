@@ -1,5 +1,6 @@
 """Definition and core functionality of mechanism data structure."""
 
+import functools
 import itertools
 import textwrap
 from collections.abc import Callable, Collection, Mapping, Sequence
@@ -657,6 +658,16 @@ def left_update(
     :return: Mechanism
     """
     return update(mech1, mech2, drop_orig=drop_orig, how="left")
+
+
+# sequence operations
+def combine_all(mechs: Sequence[Mechanism]) -> Mechanism:
+    """Combine mechanisms into one.
+
+    :param mechs: Mechanisms
+    :return: Mechanism
+    """
+    return functools.reduce(update, mechs)
 
 
 # parent
