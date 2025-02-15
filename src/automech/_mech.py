@@ -769,6 +769,8 @@ def enumerate_reactions(
 ) -> Mechanism:
     """Enumerate reactions for mechanism based on SMARTS reaction template.
 
+    Does not include stereochemistry! (Run before stereoexpansion.)
+
     Reactants are listed by position in the SMARTS template. If a sequence of reactants
     is provided, reactions will be enumerated for each of them. If `None` is provided,
     reactions will be enumerated for all species currently in the mechanism.
@@ -802,6 +804,8 @@ def _enumerate_reactions(
 ) -> Mechanism:
     """Enumerate reactions for mechanism based on SMARTS reaction template.
 
+    Does not include stereochemistry! (Run before stereoexpansion.)
+
     Reactants are listed by position in the SMARTS template. If a sequence of reactants
     is provided, reactions will be enumerated for each of them. If `None` is provided,
     reactions will be enumerated for all species currently in the mechanism.
@@ -832,7 +836,7 @@ def _enumerate_reactions(
             mech.species, vals_=rct_vals_, col_=spc_col_, fill=True
         )
         for rxn in automol.reac.enum.from_amchis(smarts, rct_chis):
-            _, prd_chis = automol.reac.amchis(rxn)
+            _, prd_chis = automol.reac.amchis(rxn, stereo=False)
             rxn_chis.append((rct_chis, prd_chis))
 
     # Form the updated species DataFrame
