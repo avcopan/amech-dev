@@ -581,7 +581,7 @@ def expand_stereo(
                 rnames = tuple(map(name_dct.get, zip(rname0s, rchis, strict=True)))
                 pnames = tuple(map(name_dct.get, zip(pname0s, pchis, strict=True)))
                 if not all(isinstance(n, str) for n in rnames + pnames):
-                    return ([], [])
+                    return ([], [], [])
 
                 rnames_lst.append(rnames)
                 pnames_lst.append(pnames)
