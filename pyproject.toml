@@ -132,4 +132,4 @@ follow_imports = "skip"
 ignore_errors = true
 
 [dependency-groups]
-proto = ["pyvis>=0.3.2,<0.4"]
+proto = ["pyvis>=0.3.2,<0.4", "recursive-diff>=1.2.0,<2"]
