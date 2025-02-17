@@ -169,7 +169,11 @@ def reactions_block(
 
     # Get strings
     rxn_strs = [
-        (text_with_comments(r, f"pes.subpes.channel  {'.'.join(s)}") if any(s) else r)
+        (
+            text_with_comments(r, f"pes.subpes.channel  {'.'.join(s)}", sep="#")
+            if any(s)
+            else r
+        )
         for r, s in rxn_df.select(ck_col, srt_col).rows()
     ]
     return block(KeyWord.REACTIONS, rxn_strs, header=header, frame=frame)
