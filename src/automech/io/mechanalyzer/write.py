@@ -42,7 +42,9 @@ def mechanism(
         dictionary and species dataframe?
     :return: MechaAnalyzer reaction dictionary (or CHEMKIN string) and species dataframe
     """
-    mech_str = chemkin_write.reactions_block(mech, fill_rates=fill_rates)
+    mech_str = chemkin_write.reactions_block(
+        mech, fill_rates=fill_rates, comment_sep="#"
+    )
     if rxn_out is not None:
         rxn_out: Path = Path(rxn_out)
         rxn_out.write_text(mech_str)

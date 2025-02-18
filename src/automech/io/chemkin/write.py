@@ -103,13 +103,17 @@ def thermo_block(mech: Mechanism) -> str:
 
 
 def reactions_block(
-    mech: Mechanism, frame: bool = True, fill_rates: bool = False
+    mech: Mechanism,
+    frame: bool = True,
+    fill_rates: bool = False,
+    comment_sep: str = "!",
 ) -> str:
     """Write the reactions block to a string.
 
     :param mech: A mechanism
     :param frame: Whether to frame the block with its header and footer
     :param fill_rates: Whether to fill missing rates with dummy values
+    :param comment_sep: Comment separator
     :return: The reactions block string
     """
     # Generate the header
@@ -170,7 +174,7 @@ def reactions_block(
     # Get strings
     rxn_strs = [
         (
-            text_with_comments(r, f"pes.subpes.channel  {'.'.join(s)}", sep="#")
+            text_with_comments(r, f"pes.subpes.channel  {'.'.join(s)}", sep=comment_sep)
             if any(s)
             else r
         )
