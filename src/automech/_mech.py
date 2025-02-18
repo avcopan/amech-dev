@@ -459,7 +459,7 @@ def with_rate_objects(
     col: str,
     comp_mechs: Sequence[Mechanism] = (),
     comp_cols: Sequence[str] = (),
-    comp_stereo: bool = True,
+    comp_stereo: bool | Sequence[bool] = True,
     fill: bool = False,
 ) -> Mechanism:
     """Add rate objects.
@@ -467,7 +467,8 @@ def with_rate_objects(
     :param mech: Mechanism
     :param col: Column
     :param comp_mechs: Other mechanisms by rate object column
-    :param stereo: Whether to include stereo in matching reactions
+    :param comp_stereo: Whether to include stereo in matching reactions
+        Use sequence to specify for each mechanism
     :param fill: Whether to fill in missing rates
     :return: Mechanism
     """
@@ -484,7 +485,7 @@ def with_comparison_rate_objects(
     mech: Mechanism,
     comp_mechs: Sequence[Mechanism],
     comp_cols: Sequence[str],
-    stereo: bool = True,
+    stereo: bool | Sequence[bool] = True,
 ) -> Mechanism:
     """Add rate objects from other mechanisms for comparison.
 
@@ -492,30 +493,37 @@ def with_comparison_rate_objects(
     :param comp_mechs: Comparison mechanisms
     :param comp_cols: Comparison columns
     :param stereo: Whether to include stereo in matching reactions
+        Use sequence to specify for each mechanism
     :return: Mechanism
     """
     mech = mech.model_copy()
 
-    key_col = c_.temp()
-    mech.reactions = reaction.with_key(
-        mech.reactions,
-        col=key_col,
-        spc_df=mech.species,
-        stereo=stereo,
-        reversible=False,
-    )
+    comp_stereos = [stereo] * len(comp_mechs) if isinstance(stereo, bool) else stereo
 
-    for comp_col, comp_mech in zip(comp_cols, comp_mechs, strict=True):
+    key_col_dct = {s: c_.temp() for s in set(comp_stereos)}
+    for comp_stereo, key_col in key_col_dct.items():
+        mech.reactions = reaction.with_key(
+            mech.reactions,
+            col=key_col,
+            spc_df=mech.species,
+            stereo=comp_stereo,
+            reversible=False,
+        )
+
+    for comp_col, comp_mech, comp_stereo in zip(
+        comp_cols, comp_mechs, comp_stereos, strict=True
+    ):
+        key_col = key_col_dct.get(comp_stereo)
         spc_df = comp_mech.species
         rxn_df = comp_mech.reactions
         rxn_df = reaction.with_key(
-            rxn_df, col=key_col, spc_df=spc_df, stereo=stereo, reversible=False
+            rxn_df, col=key_col, spc_df=spc_df, stereo=comp_stereo, reversible=False
         )
         rxn_df = reaction.with_rate_objects(rxn_df, col=comp_col)
         rxn_df = rxn_df.select(key_col, comp_col)
         mech.reactions = mech.reactions.join(rxn_df, on=key_col, how="left")
 
-    mech.reactions = mech.reactions.drop(key_col)
+    mech.reactions = mech.reactions.drop(list(key_col_dct.values()))
     return mech
 
 
@@ -1027,6 +1035,7 @@ Number: TypeAlias = float | int
 def display_reactions(
     mech: Mechanism,
     eqs: Collection | None = None,
+    chans: Collection | None = None,
     stereo: bool = True,
     spc_cols: Sequence[str] = (Species.smiles,),
     t_range: tuple[Number, Number] = (400, 1250),
@@ -1034,12 +1043,13 @@ def display_reactions(
     label: str = "This work",
     comp_mechs: Sequence[Mechanism] = (),
     comp_labels: Sequence[str] = (),
-    comp_stereo: bool = True,
+    comp_stereo: bool | Sequence[bool] = True,
 ):
     """Display reactions in mechanism.
 
     :param mech: Mechanism
     :param eqs: Optionally, specify specific equations to visualize
+    :param chans: Optionally, specify specific channels to visualize, e.g. "1: 2"
     :param stereo: Include stereochemistry in species drawings?, defaults to True
     :param keys: Keys of extra columns to print
     :param spc_cols: Optionally, translate reactant and product names into these
@@ -1047,7 +1057,8 @@ def display_reactions(
     :param t_grid: Grid of temperature values
     :param label: Label for rate comparison
     :param comp_mechs: Mechanisms to compare rates with by label
-    :param comp_stereo: Whether to include stereochemistry when matching reactions
+    :param comp_stereo: Whether to include stereo in matching reactions
+        Use sequence to specify for each mechanism
     """
     # Add rate objects with comparisons
     ncomps = len(comp_mechs)
@@ -1072,6 +1083,15 @@ def display_reactions(
         tmp_col = c_.temp()
         rxn_df = reaction.with_equation_match_column(rxn_df, tmp_col, eqs)
         rxn_df = rxn_df.filter(tmp_col).drop(tmp_col)
+
+    # Select the requested channels, if any
+    if chans is not None:
+        tmp_col = c_.temp()
+        cols = [ReactionSorted.pes, ReactionSorted.channel]
+        vals_lst = [tuple(map(int, chan.split(":"))) for chan in chans]
+        assert all(c in rxn_df.columns for c in cols), f"{cols} !<= {rxn_df.columns}"
+        rxn_df = df_.with_match_index_column(rxn_df, tmp_col, vals_=vals_lst, col_=cols)
+        rxn_df = rxn_df.filter(polars.col(tmp_col).is_not_null()).drop(tmp_col)
 
     # 2. Add AMChI translation + others that were requested
     spc_cols_ = [Species.amchi, *spc_cols]
@@ -1124,6 +1144,9 @@ def display_reactions(
                 p=p,
             )
         )
+
+    # Sort by the number of non-null comparison columns
+    rxn_df = rxn_df.sort([polars.col(c).is_null() for c in comp_cols])
 
     # Display requested reactions
     cols = [obj_col, *comp_cols, *rct_cols, *prd_cols]
