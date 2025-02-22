@@ -80,7 +80,7 @@ def species(
         spc_df,
         MASpecies.inchi,
         MASpecies.canon_enant_ich,
-        automol.amchi.canonical_enantiomer,
+        automol.chi.canonical_enantiomer,
         bar=True,
     )
     spc_df = spc_df.with_columns((polars.col(Species.spin) + 1).alias(MASpecies.mult))
