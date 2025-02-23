@@ -501,8 +501,9 @@ def sort_data(net: Network, key: str) -> dict[int, tuple[int, int, int]]:
     # Identify sorted PES, sub-PES, and channel indices for each reaction
     srt_dct = {}
     for pes_idx, pes_net in enumerate(pes_nets, start=1):
-        chn_idx_dct = {r: c for c, r in enumerate(_reaction_indices(pes_net), start=1)}
         sub_nets = sorted(subpes_networks(pes_net), key=lambda x: _reaction_indices(x))
+        rxn_idxs = itertools.chain.from_iterable(map(_reaction_indices, sub_nets))
+        chn_idx_dct = {r: c for c, r in enumerate(rxn_idxs, start=1)}
         for sub_idx, sub_net in enumerate(sub_nets, start=1):
             srt_dct.update(
                 {
