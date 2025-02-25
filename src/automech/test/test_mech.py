@@ -187,6 +187,18 @@ def test__enumerate_reactions(mech0, smarts, smis_, rcount, scount, src_mech):
 
 
 @pytest.mark.parametrize(
+    "mech0, rxn_smi, rcount, scount",
+    [(MECH_BUTENE, "CC=CC.[OH]>>C[CH]C(O)C", 2, 7)],
+)
+def test__drop_reactions_by_smiles(mech0, rxn_smi, rcount, scount):
+    """Test automech.enumerate_reactions_from_smarts."""
+    mech = automech.drop_reactions_by_smiles(mech0, rxn_smis=[rxn_smi])
+    print(mech)
+    assert automech.reaction_count(mech) == rcount
+    assert automech.species_count(mech) == scount
+
+
+@pytest.mark.parametrize(
     "mech0, srt_dct0",
     [
         (
@@ -263,3 +275,4 @@ if __name__ == "__main__":
     #         5: (3, 1, 1),
     #     },
     # )
+    test__drop_reactions_by_smiles(MECH_BUTENE, "CC=CC.[OH]>>C[CH]C(O)C", 2, 7)

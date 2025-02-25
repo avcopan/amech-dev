@@ -95,8 +95,10 @@ def from_smiles(
         spc_df = species.left_update(spc_df, src_mech.species, drop_orig=True)
 
     # Build reactions dataframe
-    trans_dct = df_.lookup_dict(spc_df, Species.smiles, Species.name)
-    data = {Reaction.reactants: rct_smis, Reaction.products: prd_smis}
+    trans_dct = df_.lookup_dict(spc_df, Species.amchi, Species.name)
+    rct_chis = [list(map(automol.smiles.amchi, rs)) for rs in rct_smis]
+    prd_chis = [list(map(automol.smiles.amchi, rs)) for rs in prd_smis]
+    data = {Reaction.reactants: rct_chis, Reaction.products: prd_chis}
     rxn_df = reaction.bootstrap(data, name_dct=trans_dct, spc_df=spc_df)
 
     mech = Mechanism(reactions=rxn_df, species=spc_df)
@@ -365,6 +367,29 @@ def drop_self_reactions(mech: Mechanism) -> Mechanism:
     """
     mech = mech.model_copy()
     mech.reactions = reaction.drop_self_reactions(mech.reactions)
+    return mech
+
+
+def drop_reactions_by_smiles(
+    mech: Mechanism, rxn_smis: Sequence[str] = (), stereo: bool = True
+) -> Mechanism:
+    """Drop species and reactions by SMILES strings.
+
+    :param spc_smis: Species SMILES strings
+    :param rxn_smis: Optionally, reaction SMILES strings
+    :param src_mech: Optional source mechanism for species names
+    :param stereo: Whether to include stereochemistry in matching
+    :return: Mechanism
+    """
+    mech = mech.model_copy()
+
+    drop_mech = from_smiles(rxn_smis=rxn_smis, src_mech=mech)
+
+    tmp_col = c_.temp()
+    mech = with_key(mech, col=tmp_col, stereo=stereo, reversible=True)
+    drop_mech = with_key(drop_mech, col=tmp_col, stereo=stereo, reversible=True)
+    drop_keys = drop_mech.reactions.get_column(tmp_col)
+    mech.reactions = mech.reactions.filter(~polars.col(tmp_col).is_in(drop_keys))
     return mech
 
 
