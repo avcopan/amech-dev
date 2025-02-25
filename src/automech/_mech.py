@@ -390,6 +390,7 @@ def drop_reactions_by_smiles(
     drop_mech = with_key(drop_mech, col=tmp_col, stereo=stereo, reversible=True)
     drop_keys = drop_mech.reactions.get_column(tmp_col)
     mech.reactions = mech.reactions.filter(~polars.col(tmp_col).is_in(drop_keys))
+    mech.reactions = mech.reactions.drop(tmp_col)
     return mech
 
 
