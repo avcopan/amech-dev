@@ -331,7 +331,7 @@ def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     :return: Reaction DataFrame
     """
     rev0 = True
-    rate0 = autochem.rate.ArrheniusRateConstant().model_dump()
+    rate0 = autochem.rate.ArrheniusRateConstantFit().model_dump()
 
     if ReactionRate.reversible not in rxn_df:
         rxn_df = rxn_df.with_columns(polars.lit(rev0).alias(ReactionRate.reversible))

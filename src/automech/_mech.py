@@ -1166,8 +1166,8 @@ def display_reactions(
                 rate,
                 comp_rates=comp_rates_,
                 comp_labels=comp_labels_,
-                t_range=t_range,
-                p=p,
+                T_range=t_range,
+                P=p,
             )
         )
 
