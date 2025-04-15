@@ -38,7 +38,7 @@ class ReactionRate(Model):
 
 assert all(
     f in pandera_.columns([Reaction, ReactionRate])
-    for f in autochem.rate.Rate.model_fields
+    for f in autochem.rate.Reaction.model_fields
 ), "Make sure field names match AutoChem."
 
 
@@ -317,7 +317,7 @@ def with_rate_objects(
     ]
     return rxn_df.with_columns(
         polars.struct(cols)
-        .map_elements(autochem.rate.Rate.model_validate, return_dtype=polars.Object)
+        .map_elements(autochem.rate.Reaction.model_validate, return_dtype=polars.Object)
         .alias(col)
     )
 
@@ -331,7 +331,7 @@ def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     :return: Reaction DataFrame
     """
     rev0 = True
-    rate0 = autochem.rate.ArrheniusRateConstantFit().model_dump()
+    rate0 = autochem.rate.ArrheniusRateFit().model_dump()
 
     if ReactionRate.reversible not in rxn_df:
         rxn_df = rxn_df.with_columns(polars.lit(rev0).alias(ReactionRate.reversible))

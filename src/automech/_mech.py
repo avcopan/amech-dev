@@ -11,7 +11,7 @@ import automol
 import more_itertools as mit
 import polars
 import pydantic
-from autochem.rate import Rate
+from autochem.rate import Reaction
 from IPython.display import display as ipy_display
 
 from . import net as net_
@@ -765,7 +765,7 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     rem_rxn_df = mech.reactions.filter(~needs_exp)
 
     #   b. Expand and dump to dictionary
-    def exp_(rate: Rate) -> list[dict[str, object]]:
+    def exp_(rate: Reaction) -> list[dict[str, object]]:
         rates = autochem.rate.expand_lumped(rate, exp_dct=exp_dct)
         return (
             [r.reactants for r in rates],
@@ -1130,7 +1130,7 @@ def display_reactions(
             rxn_df, names, vals, rct_col=rct_col, prd_col=prd_col
         )
 
-    def _display_reaction(rate: Rate, *vals):
+    def _display_reaction(rate: Reaction, *vals):
         comp_rates, vals = vals[:ncomps], vals[ncomps:]
         idxs = [i for i, r in enumerate(comp_rates) if r is not None]
         comp_rates_ = [comp_rates[i] for i in idxs]
