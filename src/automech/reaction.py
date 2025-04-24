@@ -5,13 +5,14 @@ import itertools
 from collections.abc import Mapping, Sequence
 from typing import Annotated
 
-import autochem
 import automol
 import more_itertools as mit
 import polars
 import pydantic
-from autochem.util import chemkin
 from pydantic_core import core_schema
+
+import autochem as ac
+from autochem.util import chemkin
 
 from . import species
 from .species import Species
@@ -33,13 +34,13 @@ class ReactionRate(Model):
     """Reaction table with rate."""
 
     reversible: bool
-    rate_constant: polars.Struct
+    rate: polars.Struct
 
 
 assert all(
     f in pandera_.columns([Reaction, ReactionRate])
-    for f in autochem.rate.Reaction.model_fields
-), "Make sure field names match AutoChem."
+    for f in ac.rate.Reaction.model_fields
+), "Make sure field names match ac."
 
 
 class ReactionSorted(Model):
@@ -98,8 +99,8 @@ def has_rates(rxn_df: polars.DataFrame) -> bool:
     :param rxn_df: Reactions DataFrame
     :return: `True` if it does, `False` if not
     """
-    return ReactionRate.rate_constant in rxn_df and df_.has_values(
-        rxn_df.get_column(ReactionRate.rate_constant).struct.unnest()
+    return ReactionRate.rate in rxn_df and df_.has_values(
+        rxn_df.get_column(ReactionRate.rate).struct.unnest()
     )
 
 
@@ -313,11 +314,11 @@ def with_rate_objects(
         Reaction.reactants,
         Reaction.products,
         ReactionRate.reversible,
-        ReactionRate.rate_constant,
+        ReactionRate.rate,
     ]
     return rxn_df.with_columns(
         polars.struct(cols)
-        .map_elements(autochem.rate.Reaction.model_validate, return_dtype=polars.Object)
+        .map_elements(ac.rate.Reaction.model_validate, return_dtype=polars.Object)
         .alias(col)
     )
 
@@ -331,24 +332,20 @@ def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     :return: Reaction DataFrame
     """
     rev0 = True
-    rate0 = autochem.rate.ArrheniusRateFit().model_dump()
+    rate0 = ac.rate.ArrheniusRateFit().model_dump()
 
     if ReactionRate.reversible not in rxn_df:
         rxn_df = rxn_df.with_columns(polars.lit(rev0).alias(ReactionRate.reversible))
 
-    if ReactionRate.rate_constant not in rxn_df:
-        rxn_df = rxn_df.with_columns(
-            polars.lit(rate0).alias(ReactionRate.rate_constant)
-        )
+    if ReactionRate.rate not in rxn_df:
+        rxn_df = rxn_df.with_columns(polars.lit(rate0).alias(ReactionRate.rate))
 
     rev0_lit = polars.lit(rev0, dtype=df_.dtype(rxn_df, ReactionRate.reversible))
-    rate0_lit = polars.lit(rate0, dtype=df_.dtype(rxn_df, ReactionRate.rate_constant))
+    rate0_lit = polars.lit(rate0, dtype=df_.dtype(rxn_df, ReactionRate.rate))
     rxn_df = rxn_df.with_columns(
         polars.col(ReactionRate.reversible).fill_null(rev0_lit)
     )
-    rxn_df = rxn_df.with_columns(
-        polars.col(ReactionRate.rate_constant).fill_null(rate0_lit)
-    )
+    rxn_df = rxn_df.with_columns(polars.col(ReactionRate.rate).fill_null(rate0_lit))
     return rxn_df
 
 
@@ -360,9 +357,7 @@ def without_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     :param rxn_df: Reaction DataFrame
     :return: Reaction DataFrame
     """
-    return rxn_df.drop(
-        ReactionRate.rate_constant, ReactionRate.reversible, strict=False
-    )
+    return rxn_df.drop(ReactionRate.rate, ReactionRate.reversible, strict=False)
 
 
 def with_species_presence_column(

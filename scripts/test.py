@@ -6,6 +6,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import click
+
 import mechdriver
 from mechdriver import test_utils
 

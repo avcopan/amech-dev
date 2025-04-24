@@ -3,13 +3,14 @@
 import itertools
 import re
 
-import autochem
 import more_itertools as mit
 import polars
 import pyparsing as pp
+from pyparsing import common as ppc
+
+import autochem as ac
 from autochem import unit_
 from autochem.unit_ import Units
-from pyparsing import common as ppc
 
 from ... import reaction
 from ... import species as m_species
@@ -102,13 +103,13 @@ def reactions(
         lambda s: not _is_reaction_line(s), rxn_block_str.splitlines()
     )
     rxn_strs = list(map("\n".join, mit.split_before(line_iter, _is_reaction_line)))
-    rxns = [autochem.rate.from_chemkin_string(r, units=units0) for r in rxn_strs]
+    rxns = [ac.rate.from_chemkin_string(r, units=units0) for r in rxn_strs]
 
     data = {
         Reaction.reactants: [r.reactants for r in rxns],
         Reaction.products: [r.products for r in rxns],
         ReactionRate.reversible: [r.reversible for r in rxns],
-        ReactionRate.rate_constant: [r.rate_constant.model_dump() for r in rxns],
+        ReactionRate.rate: [r.rate.model_dump() for r in rxns],
     }
     rxn_df = reaction.bootstrap(data, spc_df=spc_df)
 

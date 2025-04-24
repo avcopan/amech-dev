@@ -6,13 +6,13 @@ import textwrap
 from collections.abc import Callable, Collection, Mapping, Sequence
 from typing import TypeAlias
 
-import autochem
 import automol
 import more_itertools as mit
 import polars
 import pydantic
-from autochem.rate import Reaction
 from IPython.display import display as ipy_display
+
+import autochem as ac
 
 from . import net as net_
 from . import reaction, species
@@ -748,13 +748,11 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
 
     # 2. Reaction table
     #   a. Identify subset of reactions to be expanded
-    has_rate = ReactionRate.rate_constant in mech.reactions
+    has_rate = ReactionRate.rate in mech.reactions
     mech.reactions = reaction.with_rates(mech.reactions)
 
     mech.reactions = mech.reactions.with_columns(
-        **c_.from_orig(
-            [Reaction.reactants, Reaction.products, ReactionRate.rate_constant]
-        )
+        **c_.from_orig([Reaction.reactants, Reaction.products, ReactionRate.rate])
     )
     needs_exp = (
         polars.concat_list(Reaction.reactants, Reaction.products)
@@ -765,16 +763,16 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     rem_rxn_df = mech.reactions.filter(~needs_exp)
 
     #   b. Expand and dump to dictionary
-    def exp_(rate: Reaction) -> list[dict[str, object]]:
-        rates = autochem.rate.expand_lumped(rate, exp_dct=exp_dct)
+    def exp_(rate: ac.rate.Reaction) -> list[dict[str, object]]:
+        rates = ac.rate.expand_lumped(rate, exp_dct=exp_dct)
         return (
             [r.reactants for r in rates],
             [r.products for r in rates],
-            [r.rate_constant.model_dump() for r in rates],
+            [r.rate.model_dump() for r in rates],
         )
 
     obj_col = c_.temp()
-    cols = [Reaction.reactants, Reaction.products, ReactionRate.rate_constant]
+    cols = [Reaction.reactants, Reaction.products, ReactionRate.rate]
     dtypes = list(map(polars.List, map(exp_rxn_df.schema.get, cols)))
     exp_rxn_df = reaction.with_rate_objects(exp_rxn_df, col=obj_col)
     exp_rxn_df = df_.map_(exp_rxn_df, obj_col, cols, exp_, dtype_=dtypes, bar=True)
@@ -783,7 +781,7 @@ def expand_parent_stereo(mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
 
     if not has_rate:
         mech.reactions = reaction.without_rates(mech.reactions)
-        mech.reactions = mech.reactions.drop(c_.orig(ReactionRate.rate_constant))
+        mech.reactions = mech.reactions.drop(c_.orig(ReactionRate.rate))
 
     return mech
 
@@ -1130,7 +1128,7 @@ def display_reactions(
             rxn_df, names, vals, rct_col=rct_col, prd_col=prd_col
         )
 
-    def _display_reaction(rate: Reaction, *vals):
+    def _display_reaction(rate: ac.rate.Reaction, *vals):
         comp_rates, vals = vals[:ncomps], vals[ncomps:]
         idxs = [i for i, r in enumerate(comp_rates) if r is not None]
         comp_rates_ = [comp_rates[i] for i in idxs]
@@ -1138,7 +1136,7 @@ def display_reactions(
 
         assert len(vals) % 2 == 0, "Expected even number of values"
         rxn_chis, *rxn_vals_lst = list(zip(*mit.divide(2, vals), strict=True))
-        eq = autochem.rate.chemkin_equation(rate)
+        eq = ac.rate.chemkin_equation(rate)
         print()
         print("*********")
         print(f"Reaction: {eq}")
@@ -1152,20 +1150,20 @@ def display_reactions(
 
         print("Rate parameters:")
         indent_print(f"{label}:")
-        indent_print(autochem.rate.chemkin_string(rate), n=2)
+        indent_print(ac.rate.chemkin_string(rate), n=2)
         for comp_label, comp_rate in zip(comp_labels_, comp_rates_, strict=True):
             indent_print(f"{comp_label}:")
-            indent_print(autochem.rate.chemkin_string(comp_rate), n=2)
+            indent_print(ac.rate.chemkin_string(comp_rate), n=2)
 
         # Display the reaction
         automol.amchi.display_reaction(*rxn_chis, stereo=stereo)
 
         # Display the Arrhenius plot
         ipy_display(
-            autochem.rate.display(
+            ac.rate.display(
                 rate,
-                comp_rates=comp_rates_,
-                comp_labels=comp_labels_,
+                others=comp_rates_,
+                others_labels=comp_labels_,
                 T_range=t_range,
                 P=p,
             )
