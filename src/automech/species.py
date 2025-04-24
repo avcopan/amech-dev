@@ -8,6 +8,8 @@ import polars
 import pydantic
 from pydantic_core import core_schema
 
+import autochem as ac
+
 from .util import c_, df_, pandera_
 from .util.pandera_ import Model
 
@@ -23,7 +25,19 @@ class Species(Model):
     formula: polars.Struct
 
 
-class SpeciesThermo(Model):
+class SpeciesTherm(Model):
+    """Species table with thermo."""
+
+    therm: polars.Struct
+
+
+assert all(
+    f in pandera_.columns([Species, SpeciesTherm])
+    for f in ac.therm.Species.model_fields
+), "Make sure field names match autochem."
+
+
+class SpeciesThermoOld(Model):
     """Species table with thermo."""
 
     thermo_string: str
@@ -149,6 +163,24 @@ def with_key(
     if not stereo:
         spc_df = spc_df.drop(tmp_col)
     return spc_df
+
+
+def with_therm_objects(spc_df: polars.DataFrame, col: str) -> polars.DataFrame:
+    """Get reaction rate objects as a list.
+
+    :param spc_df: Species DataFrame
+    :param col: Column
+    :return: Rate objects
+    """
+    cols = [
+        Species.name,
+        SpeciesTherm.therm,
+    ]
+    return spc_df.with_columns(
+        polars.struct(cols)
+        # .map_elements(ac.therm.Species.model_validate, return_dtype=polars.Object)
+        .map_elements(print, return_dtype=polars.Object).alias(col)
+    )
 
 
 # tranform

@@ -40,7 +40,7 @@ class ReactionRate(Model):
 assert all(
     f in pandera_.columns([Reaction, ReactionRate])
     for f in ac.rate.Reaction.model_fields
-), "Make sure field names match ac."
+), "Make sure field names match autochem."
 
 
 class ReactionSorted(Model):

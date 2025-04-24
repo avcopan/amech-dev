@@ -16,7 +16,7 @@ from ... import reaction
 from ... import species as m_species
 from ..._mech import Mechanism
 from ...reaction import Reaction, ReactionRate
-from ...species import Species, SpeciesThermo
+from ...species import Species, SpeciesTherm
 from ...util import df_, io_
 from ...util.io_ import TextInput, TextOutput
 
@@ -207,15 +207,16 @@ def thermo(
     :param spc_df: Optionally, join this to a species dataframe
     :return: A thermo dataframe
     """
-    therm_dct = thermo_entry_dict(inp)
-    if therm_dct is None:
+    spc_strs = thermo_entries(inp)
+    if spc_strs is None:
         return spc_df
 
+    spcs = [ac.therm.from_chemkin_string(s) for s in spc_strs]
     data = {
-        Species.name: list(therm_dct.keys()),
-        SpeciesThermo.thermo_string: list(therm_dct.values()),
+        Species.name: [s.name for s in spcs],
+        SpeciesTherm.therm: [s.therm.model_dump() for s in spcs],
     }
-    therm_df = polars.DataFrame(data)
+    therm_df = polars.DataFrame(data, strict=False)
     if spc_df is not None:
         therm_df = m_species.left_update(spc_df, therm_df, key_col_=Species.name)
 
@@ -248,7 +249,7 @@ def thermo_temperatures(inp: TextInput) -> list[float] | None:
     return list(map(float, temps)) if temps else None
 
 
-def thermo_entries(inp: TextInput) -> list[str]:
+def thermo_entries(inp: TextInput) -> list[str] | None:
     """Get the therm block entries.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -263,19 +264,6 @@ def thermo_entries(inp: TextInput) -> list[str]:
     )
     entries = parser.parse_string(therm_block_str).as_list()
     return entries
-
-
-def thermo_entry_dict(inp: TextInput) -> dict[str, str]:
-    """Get the therm block entries as a dictionary by species name.
-
-    :param inp: A CHEMKIN mechanism, as a file path or string
-    :return: A dictionary mapping species names to therm block entries
-    """
-    entries = thermo_entries(inp)
-    if entries is None:
-        return None
-
-    return dict(e.split(maxsplit=1) for e in entries)
 
 
 # generic
