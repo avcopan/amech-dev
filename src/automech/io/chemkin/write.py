@@ -7,14 +7,14 @@ from pathlib import Path
 import automol
 import polars
 
-from autochem import rate, unit_
+from autochem import rate, therm, unit_
 from autochem.unit_ import UNITS
 from autochem.util import chemkin
 
-from ... import reaction
+from ... import reaction, species
 from ..._mech import Mechanism
 from ...reaction import ReactionSorted
-from ...species import Species, SpeciesThermo
+from ...species import Species, SpeciesTherm
 from ...util import c_, pandera_
 from .read import KeyWord
 
@@ -81,16 +81,24 @@ def thermo_block(mech: Mechanism) -> str:
     :param mech: A mechanism
     :return: The thermo block string
     """
-    if SpeciesThermo.thermo_string not in mech.species:
+    if SpeciesTherm.therm not in mech.species:
         return None
 
-    # Generate the thermo strings
-    therm_strs = mech.species.select(
-        polars.concat_str(
-            polars.col(Species.name).str.pad_end(24),
-            polars.col(SpeciesThermo.thermo_string),
-        )
-    ).to_series()
+    spc_df = mech.species
+
+    # Add species therm objects
+    obj_col = c_.temp()
+    spc_df = species.with_therm_objects(spc_df, obj_col)
+
+    # Add Chemkin thermo strings
+    ck_col = c_.temp()
+    spc_df = spc_df.with_columns(
+        polars.col(obj_col)
+        .map_elements(therm.chemkin_string, return_dtype=polars.String)
+        .alias(ck_col)
+    )
+
+    therm_strs = spc_df.select(ck_col).to_series()
 
     # Generate the header
     thermo_temps = mech.thermo_temps
@@ -130,7 +138,7 @@ def reactions_block(
     dup_col = c_.temp()
     rxn_df = reaction.with_duplicate_column(rxn_df, dup_col)
 
-    # Add reaction objects
+    # Add reaction rate objects
     obj_col = c_.temp()
     rxn_df = reaction.with_rate_objects(rxn_df, obj_col, fill=fill_rates)
 

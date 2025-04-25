@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import automech
-from automech.species import SpeciesThermoOld
+from automech.species import SpeciesTherm
 
 DATA_PATH = Path(__file__).parent / "data"
 TEMP_PATH = Path(tempfile.gettempdir())
@@ -108,7 +108,7 @@ def test__rmg(rxn_file_name, spc_file_name, nrxns, nspcs):
     print(mech)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
-    assert SpeciesThermoOld.thermo_string in mech.species
+    assert SpeciesTherm.therm in mech.species
 
 
 if __name__ == "__main__":

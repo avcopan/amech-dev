@@ -37,12 +37,6 @@ assert all(
 ), "Make sure field names match autochem."
 
 
-class SpeciesThermoOld(Model):
-    """Species table with thermo."""
-
-    thermo_string: str
-
-
 class SpeciesStereo(Model):
     """Stereo-expanded species table."""
 
@@ -178,8 +172,8 @@ def with_therm_objects(spc_df: polars.DataFrame, col: str) -> polars.DataFrame:
     ]
     return spc_df.with_columns(
         polars.struct(cols)
-        # .map_elements(ac.therm.Species.model_validate, return_dtype=polars.Object)
-        .map_elements(print, return_dtype=polars.Object).alias(col)
+        .map_elements(ac.therm.Species.model_validate, return_dtype=polars.Object)
+        .alias(col)
     )
 
 
