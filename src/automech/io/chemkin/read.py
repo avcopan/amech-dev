@@ -74,8 +74,7 @@ def mechanism(
     """
     spc_df = species(inp, out=spc_out)
     rxn_df = reactions(inp, out=out, spc_df=spc_df)
-    thermo_temps = thermo_temperatures(inp)
-    return Mechanism(reactions=rxn_df, species=spc_df, thermo_temps=thermo_temps)
+    return Mechanism(reactions=rxn_df, species=spc_df)
 
 
 # reactions
@@ -168,7 +167,6 @@ def species(inp: TextInput, out: TextOutput = None) -> polars.DataFrame:
         {Species.name: r.get("name"), **dict(r.get("values").as_list())}
         for r in parser.parse_string(spc_block_str)
     ]
-    print(f"data = {data}")
     spc_df = m_species.bootstrap(data)
     spc_df = thermo(inp, spc_df=spc_df)
 
@@ -207,11 +205,12 @@ def thermo(
     :param spc_df: Optionally, join this to a species dataframe
     :return: A thermo dataframe
     """
+    _, T_mid, _ = mit.padded(thermo_temperatures(inp) or [], fillvalue=None, n=3)
     spc_strs = thermo_entries(inp)
     if spc_strs is None:
         return spc_df
 
-    spcs = [ac.therm.from_chemkin_string(s) for s in spc_strs]
+    spcs = [ac.therm.from_chemkin_string(s, T_mid=T_mid) for s in spc_strs]
     data = {
         Species.name: [s.name for s in spcs],
         SpeciesTherm.therm: [s.therm.model_dump() for s in spcs],
@@ -246,7 +245,7 @@ def thermo_temperatures(inp: TextInput) -> list[float] | None:
 
     parser = therm_temperature_expression()
     temps = parser.parse_string(therm_block_str).as_list()
-    return list(map(float, temps)) if temps else None
+    return list(map(float, temps))
 
 
 def thermo_entries(inp: TextInput) -> list[str] | None:

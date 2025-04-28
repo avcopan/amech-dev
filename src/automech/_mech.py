@@ -32,7 +32,6 @@ class Mechanism(pydantic.BaseModel):
 
     reactions: ReactionDataFrame_
     species: SpeciesDataFrame_
-    thermo_temps: tuple[float, float, float] | None = None
 
 
 def from_network(net: net_.Network) -> Mechanism:
@@ -1078,7 +1077,8 @@ def display_reactions(
     :param keys: Keys of extra columns to print
     :param spc_cols: Optionally, translate reactant and product names into these
         species dataframe values
-    :param t_grid: Grid of temperature values
+    :param t_range: Range of temperatures for Arrhenius plot
+    :param p: Pressure for Arrhenius plot
     :param label: Label for rate comparison
     :param comp_mechs: Mechanisms to compare rates with by label
     :param comp_stereo: Whether to include stereo in matching reactions

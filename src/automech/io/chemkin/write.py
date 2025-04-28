@@ -92,22 +92,32 @@ def thermo_block(mech: Mechanism) -> str:
 
     # Add Chemkin thermo strings
     ck_col = c_.temp()
+    tmin_col, tmid_col, tmax_col = c_.temp(), c_.temp(), c_.temp()
     spc_df = spc_df.with_columns(
         polars.col(obj_col)
         .map_elements(therm.chemkin_string, return_dtype=polars.String)
-        .alias(ck_col)
+        .alias(ck_col),
+        polars.col(obj_col)
+        .map_elements(therm.temperature_minimum, return_dtype=polars.Float64)
+        .alias(tmin_col),
+        polars.col(obj_col)
+        .map_elements(therm.temperature_middle, return_dtype=polars.Float64)
+        .alias(tmid_col),
+        polars.col(obj_col)
+        .map_elements(therm.temperature_maximum, return_dtype=polars.Float64)
+        .alias(tmax_col),
     )
 
+    # Generate the header
+    T_min = spc_df.get_column(tmin_col).max()
+    T_mid = spc_df.get_column(tmid_col).mode().item(0)
+    T_max = spc_df.get_column(tmax_col).min()
+    header = f"ALL\n    {T_min:.3f}  {T_mid:.3f}  {T_max:.3f}"
+
+    # Generate the thermo strings
     therm_strs = spc_df.select(ck_col).to_series()
 
-    # Generate the header
-    thermo_temps = mech.thermo_temps
-    if thermo_temps is None:
-        header = None
-    else:
-        thermo_temps_str = "  ".join(f"{t:.3f}" for t in thermo_temps)
-        header = f"ALL\n    {thermo_temps_str}"
-
+    # Write the block
     return block(KeyWord.THERM, therm_strs, header=header)
 
 
