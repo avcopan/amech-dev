@@ -1016,6 +1016,7 @@ def display(
 
 def display_species(
     mech: Mechanism,
+    ids: Collection[str | int] | None = None,
     spc_vals_: Sequence[str] | None = None,
     spc_key_: str | Sequence[str] = Species.name,
     stereo: bool = True,
@@ -1034,6 +1035,14 @@ def display_species(
     """
     # Read in mechanism data
     spc_df = mech.species
+
+    # Select the requested ids, if any
+    if ids is not None:
+        ids = list(map(int, ids))
+        tmp_col = c_.temp()
+        spc_df = spc_df.with_row_index(name=tmp_col, offset=1).filter(
+            polars.col(tmp_col).is_in(ids)
+        )
 
     if spc_vals_ is not None:
         spc_df = species.filter(spc_df, vals_=spc_vals_, col_=spc_key_)
