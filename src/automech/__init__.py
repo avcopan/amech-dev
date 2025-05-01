@@ -32,6 +32,8 @@ from ._mech import (
     with_rate_objects,
     with_sort_data,
     with_species,
+    without_reactions,
+    without_species,
     without_unused_species,
 )
 
@@ -55,6 +57,8 @@ __all__ = [
     "rename",
     "neighborhood",
     "with_species",
+    "without_species",
+    "without_reactions",
     "without_unused_species",
     "with_key",
     "with_rate_objects",

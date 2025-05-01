@@ -446,6 +446,17 @@ def _with_or_without_species(
     return without_unused_species(mech)
 
 
+def without_reactions(mech: Mechanism) -> Mechanism:
+    """Remove all reactions from the mechanism.
+
+    :param mech: Mechanism
+    :return: Mechanism
+    """
+    mech = mech.model_copy()
+    mech.reactions = mech.reactions.clear()
+    return mech
+
+
 def without_unused_species(mech: Mechanism) -> Mechanism:
     """Remove unused species from mechanism.
 
@@ -566,9 +577,9 @@ def expand_stereo(
     :param distinct_ts: Include duplicate reactions for distinct TSs?
     :return: Mechanism with classified reactions, and one with unclassified
     """
-    species0 = mech.species
     mech = mech.model_copy()
     err_mech = mech.model_copy()
+    species0 = mech.species
 
     # Do species expansion
     mech.species = species.expand_stereo(mech.species, enant=enant, strained=strained)

@@ -494,7 +494,7 @@ def list_to_struct_expression(df: polars.DataFrame, col: str) -> polars.Expr:
     :param col: Column
     :return: Expression
     """
-    nmax = df.get_column(col).list.len().max()
+    nmax = df.get_column(col).list.len().max() or 0
     return polars.col(col).list.to_struct(
         # Note: The field names *must* be consistent for cross-sorting!
         "max_width",
