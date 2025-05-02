@@ -55,6 +55,7 @@ class ReactionStereo(Model):
     """Stereo-expanded reaction table."""
 
     amchi: str
+    canon: bool
     orig_reactants: str
     orig_products: str
 

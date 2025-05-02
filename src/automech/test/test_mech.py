@@ -105,17 +105,19 @@ def test__display(mech, smis, eqs):
 
 
 @pytest.mark.parametrize(
-    "mech, ref_rcount, ref_scount, ref_err_rcount, ref_err_scount, drop_unused",
+    "mech, enant, ref_rcount, ref_scount, ref_err_rcount, ref_err_scount, drop_unused",
     [
-        (MECH_NO_REACIONS, 0, 2, 0, 2, False),
-        (MECH_BUTENE, 6, 8, 1, 3, True),
+        (MECH_NO_REACIONS, True, 0, 2, 0, 2, False),
+        (MECH_BUTENE, True, 6, 12, 1, 7, False),
+        (MECH_BUTENE, False, 4, 10, 1, 7, False),
+        (MECH_BUTENE, True, 6, 8, 1, 3, True),
     ],
 )
 def test__expand_stereo(
-    mech, ref_rcount, ref_scount, ref_err_rcount, ref_err_scount, drop_unused
+    mech, enant, ref_rcount, ref_scount, ref_err_rcount, ref_err_scount, drop_unused
 ):
     """Test automech.expand_stereo."""
-    exp_mech, err_mech = automech.expand_stereo(mech)
+    exp_mech, err_mech = automech.expand_stereo(mech, enant=enant)
     if drop_unused:
         exp_mech = automech.without_unused_species(exp_mech)
         err_mech = automech.without_unused_species(err_mech)
@@ -245,8 +247,7 @@ def test__sanitize(rxn_file_name, spc_file_name, rxn_count, err_count):
 
 if __name__ == "__main__":
     # test__from_smiles()
-    # test__expand_stereo(MECH_BUTENE, 6, 8, 1, 3, True)
-    # test__expand_stereo(MECH_NO_REACIONS, 0, 2, 0, 2, False)
+    test__expand_stereo(MECH_BUTENE, False, 4, 10, 1, 7, False)
     # test__expand_parent_stereo(MECH_BUTENE, MECH_NO_REACIONS, 6, 8)
     # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
     # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
@@ -256,14 +257,14 @@ if __name__ == "__main__":
     # test__display(MECH_NO_REACIONS, None, None)
     # test__display(MECH_PROPANE, ("CCC", "[OH]"), ("C3+OH=C3y1+H2O",))
     # test__network(MECH_NO_REACIONS)
-    test__enumerate_reactions(
-        MECH_BUTENE_SUBSET,
-        enum.ReactionSmarts.abstraction,
-        [["C1=CCCC1", "CC=CC"], "[OH]"],
-        5,
-        9,
-        MECH_BUTENE,
-    )
+    # test__enumerate_reactions(
+    #     MECH_BUTENE_SUBSET,
+    #     enum.ReactionSmarts.abstraction,
+    #     [["C1=CCCC1", "CC=CC"], "[OH]"],
+    #     5,
+    #     9,
+    #     MECH_BUTENE,
+    # )
     # test__with_sort_data(
     #     MECH_ETHANE,
     #     {
@@ -275,4 +276,4 @@ if __name__ == "__main__":
     #         5: (3, 1, 1),
     #     },
     # )
-    test__drop_reactions_by_smiles(MECH_BUTENE, "CC=CC.[OH]>>C[CH]C(O)C", 2, 7)
+    # test__drop_reactions_by_smiles(MECH_BUTENE, "CC=CC.[OH]>>C[CH]C(O)C", 2, 7)

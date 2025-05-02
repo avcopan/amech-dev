@@ -571,6 +571,14 @@ def expand_stereo(
 ) -> tuple[Mechanism, Mechanism]:
     """Expand stereochemistry for mechanism.
 
+    Note: The ugliness of this function is unavoidable until we can include AutoMol
+    objects/structs in Polars columns. This will require a refactor on the AutoMol side,
+    to turn *both* Graph *and* Reaction objects into Pydantic models.
+
+    Note: Setting `enant` to `False` results in a mechanism containing only canonical
+    enantiomer *reactions*. Non-canonical enantiomer *species* will only be dropped if
+    they are not present in any canonical reaction.
+
     :param mech: Mechanism
     :param enant: Distinguish between enantiomers?, defaults to True
     :param strained: Include strained stereoisomers?
@@ -582,7 +590,7 @@ def expand_stereo(
     species0 = mech.species
 
     # Do species expansion
-    mech.species = species.expand_stereo(mech.species, enant=enant, strained=strained)
+    mech.species = species.expand_stereo(mech.species, enant=True, strained=strained)
 
     if not reaction_count(mech):
         return mech, mech
@@ -615,8 +623,9 @@ def expand_stereo(
         rnames_lst = []
         pnames_lst = []
         ts_amchis = []
+        canons = []
         for obj in objs:
-            sobjs = automol.reac.expand_stereo(obj, enant=enant, strained=strained)
+            sobjs = automol.reac.expand_stereo(obj, enant=True, strained=strained)
             for sobj in sobjs:
                 # Determine AMChI
                 ts_amchi = automol.reac.ts_amchi(sobj)
@@ -624,17 +633,24 @@ def expand_stereo(
                 rchis, pchis = automol.reac.amchis(sobj)
                 rnames = tuple(map(name_dct.get, zip(rname0s, rchis, strict=True)))
                 pnames = tuple(map(name_dct.get, zip(pname0s, pchis, strict=True)))
+                canon = automol.amchi.is_canonical_enantiomer_reaction(rchis, pchis)
                 if not all(isinstance(n, str) for n in rnames + pnames):
-                    return ([], [], [])
+                    return ([], [], [], [])
 
                 rnames_lst.append(rnames)
                 pnames_lst.append(pnames)
                 ts_amchis.append(ts_amchi)
-        return rnames_lst, pnames_lst, ts_amchis
+                canons.append(canon)
+        return rnames_lst, pnames_lst, ts_amchis, canons
 
     # Do expansion
     cols_in = [*temp_dct.values(), *orig_dct.values()]
-    cols_out = (Reaction.reactants, Reaction.products, ReactionStereo.amchi)
+    cols_out = (
+        Reaction.reactants,
+        Reaction.products,
+        ReactionStereo.amchi,
+        ReactionStereo.canon,
+    )
     mech.reactions = df_.map_(
         mech.reactions, cols_in, cols_out, _expand_reaction, bar=True
     )
@@ -645,15 +661,25 @@ def expand_stereo(
 
     # Expand table by stereoisomers
     err_mech.reactions = err_mech.reactions.drop(
-        ReactionStereo.amchi, *orig_dct.keys()
+        ReactionStereo.amchi, ReactionStereo.canon, *orig_dct.keys()
     ).rename(dict(map(reversed, orig_dct.items())))
     mech.reactions = mech.reactions.explode(
-        Reaction.reactants, Reaction.products, ReactionStereo.amchi
+        Reaction.reactants,
+        Reaction.products,
+        ReactionStereo.amchi,
+        ReactionStereo.canon,
     )
     mech.reactions = mech.reactions.drop(temp_dct.values())
 
     if not distinct_ts:
         mech = drop_duplicate_reactions(mech)
+
+    if not enant:
+        mech.reactions = mech.reactions.filter(polars.col(ReactionStereo.canon))
+        names = reaction.species_names(mech.reactions)
+        mech.species = mech.species.filter(
+            polars.col(SpeciesStereo.canon) | polars.col(Species.name).is_in(names)
+        )
 
     return mech, err_mech
 
