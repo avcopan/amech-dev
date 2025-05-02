@@ -40,6 +40,7 @@ assert all(
 class SpeciesStereo(Model):
     """Stereo-expanded species table."""
 
+    canon: bool
     orig_name: str
     orig_smiles: str
     orig_amchi: str
@@ -302,7 +303,7 @@ def expand_stereo(
     # Do species expansion based on AMChIs
     def _expand_amchi(chi):
         """Expand stereo for AMChIs."""
-        return automol.amchi.expand_stereo(chi, enant=enant, strained=strained)
+        return automol.amchi.expand_stereo(chi, enant=True, strained=strained)
 
     spc_df = spc_df.rename(c_.to_orig(Species.amchi))
     spc_df = df_.map_(
@@ -327,7 +328,11 @@ def expand_stereo(
 
     spc_df = spc_df.rename(c_.to_orig(Species.smiles))
     spc_df = df_.map_(spc_df, Species.amchi, Species.smiles, _stereo_smiles, bar=True)
-    return spc_df
+    spc_df = spc_df.with_columns(
+        (~polars.col(Species.amchi).str.contains("/m1")).alias(SpeciesStereo.canon)
+    )
+    spc_df = spc_df if enant else spc_df.filter(polars.col(SpeciesStereo.canon))
+    return validate(spc_df, model_=[Species, SpeciesStereo])
 
 
 # Bootstrapping function
