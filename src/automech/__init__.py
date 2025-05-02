@@ -31,6 +31,7 @@ from ._mech import (
     with_key,
     with_rate_objects,
     with_sort_data,
+    with_fake_sort_data,
     with_species,
     without_reactions,
     without_species,
@@ -75,6 +76,7 @@ __all__ = [
     "enumerate_reactions",
     # sorting
     "with_sort_data",
+    "with_fake_sort_data",
     # comparisons
     "are_equivalent",
     # read/write,

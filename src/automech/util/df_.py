@@ -91,14 +91,16 @@ def values(
     return [v[0] for v in vals_] if is_bare else vals_
 
 
-def with_index(df: polars.DataFrame, col: str = "index") -> polars.DataFrame:
+def with_index(
+    df: polars.DataFrame, col: str = "index", offset: int = 0
+) -> polars.DataFrame:
     """Add index column to DataFrame.
 
     :param df: DataFrame
     :param col: _description_, defaults to "index"
     :return: _description_
     """
-    return df.with_row_index(name=col)
+    return df.with_row_index(name=col, offset=offset)
 
 
 def update(
@@ -399,7 +401,9 @@ def lookup_dict(
         return (
             True
             if key_ is None
-            else key_ in cols if isinstance(key_, str) else all(k in cols for k in key_)
+            else key_ in cols
+            if isinstance(key_, str)
+            else all(k in cols for k in key_)
         )
 
     def values_(key_):

@@ -980,6 +980,35 @@ def with_sort_data(mech: Mechanism) -> Mechanism:
     return mech
 
 
+def with_fake_sort_data(mech: Mechanism) -> Mechanism:
+    """Add columns to sort mechanism by species and reactions.
+
+    :param mech: Mechanism
+    :return: Mechanism with sort columns
+    """
+    mech = mech.model_copy()
+
+    # Sort species by formula
+    mech.species = species.sort_by_formula(mech.species)
+
+    # Sort reactions by shape and by reagent names
+    mech.reactions = mech.reactions.sort(
+        polars.col(Reaction.reactants).list.len(),
+        polars.col(Reaction.products).list.len(),
+        df_.list_to_struct_expression(mech.reactions, Reaction.reactants),
+        df_.list_to_struct_expression(mech.reactions, Reaction.products),
+    )
+    mech.reactions = species.sort_by_formula(mech.reactions)
+    mech.reactions = df_.with_index(mech.reactions, ReactionSorted.pes, offset=1)
+    mech.reactions = mech.reactions.with_columns(
+        polars.lit(1).alias(ReactionSorted.subpes),
+        polars.lit(1).alias(ReactionSorted.channel),
+    )
+    mech.reactions = pandera_.impose_schema(ReactionSorted, mech.reactions)
+    mech.reactions = reaction.validate(mech.reactions, [Reaction, ReactionSorted])
+    return mech
+
+
 # comparison
 def are_equivalent(mech1: Mechanism, mech2: Mechanism) -> bool:
     """Determine whether two mechanisms are equivalent.
