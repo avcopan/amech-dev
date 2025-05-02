@@ -78,6 +78,8 @@ def validate(
     :return: DataFrame
     """
     models = [Reaction, *pandera_.normalize_model_input(model_)]
+    if df.is_empty():
+        return pandera_.empty(models)
     df = pandera_.validate(models, df)
     return df
 
