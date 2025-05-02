@@ -28,6 +28,7 @@ MECH_BUTENE = automech.from_smiles(
     ],
     name_dct={"CC=CC": "C4e2", "CC=C[CH2]": "C4e2y1", "CC1C(O1)C": "C4x23"},
 )
+MECH_BUTENE_NO_REACTIONS = automech.without_reactions(MECH_BUTENE)
 MECH_BUTENE_SUBSET = automech.from_smiles(
     rxn_smis=[
         "O.CC=C[CH2]>>[OH].CC=CC",
@@ -111,6 +112,8 @@ def test__display(mech, smis, eqs):
         (MECH_BUTENE, True, 6, 12, 1, 7, False),
         (MECH_BUTENE, False, 4, 10, 1, 7, False),
         (MECH_BUTENE, True, 6, 8, 1, 3, True),
+        (MECH_BUTENE_NO_REACTIONS, True, 0, 12, 0, 12, False),
+        (MECH_BUTENE_NO_REACTIONS, False, 0, 10, 0, 10, False),
     ],
 )
 def test__expand_stereo(
@@ -247,7 +250,7 @@ def test__sanitize(rxn_file_name, spc_file_name, rxn_count, err_count):
 
 if __name__ == "__main__":
     # test__from_smiles()
-    test__expand_stereo(MECH_BUTENE, False, 4, 10, 1, 7, False)
+    # test__expand_stereo(MECH_BUTENE, False, 4, 10, 1, 7, False)
     # test__expand_parent_stereo(MECH_BUTENE, MECH_NO_REACIONS, 6, 8)
     # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
     # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
@@ -277,3 +280,5 @@ if __name__ == "__main__":
     #     },
     # )
     # test__drop_reactions_by_smiles(MECH_BUTENE, "CC=CC.[OH]>>C[CH]C(O)C", 2, 7)
+    test__expand_stereo(MECH_BUTENE_NO_REACTIONS, True, 0, 12, 0, 12, False)
+    test__expand_stereo(MECH_BUTENE_NO_REACTIONS, False, 0, 10, 0, 10, False)

@@ -594,7 +594,12 @@ def expand_stereo(
     mech.species = species.expand_stereo(mech.species, enant=True, strained=strained)
 
     if not reaction_count(mech):
-        return mech, mech
+        mech.species = (
+            mech.species
+            if enant
+            else mech.species.filter(polars.col(SpeciesStereo.canon))
+        )
+        return mech, mech.model_copy()
 
     # Add reactant and product AMChIs
     rct_col = Reaction.reactants
