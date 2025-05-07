@@ -5,6 +5,7 @@ from ._mech import (
     Mechanism,
     are_equivalent,
     combine_all,
+    difference,
     display,
     display_reactions,
     display_species,
@@ -24,14 +25,15 @@ from ._mech import (
     rename,
     rename_dict,
     species_count,
+    species_difference,
     species_names,
     string,
     update,
     with_comparison_rate_objects,
+    with_fake_sort_data,
     with_key,
     with_rate_objects,
     with_sort_data,
-    with_fake_sort_data,
     with_species,
     without_reactions,
     without_species,
@@ -68,6 +70,8 @@ __all__ = [
     # binary operations
     "update",
     "left_update",
+    "species_difference",
+    "difference",
     # sequence operations
     "combine_all",
     # parent

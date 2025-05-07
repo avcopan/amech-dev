@@ -736,6 +736,53 @@ def left_update(
     return update(mech1, mech2, drop_orig=drop_orig, how="left")
 
 
+def species_difference(
+    mech1: Mechanism,
+    mech2: Mechanism,
+    stereo: bool = True,
+) -> Mechanism:
+    """Get mechanism with species not included in another mechanism (drops reactions).
+
+    :param mech1: First mechanism
+    :param mech2: Second mechanism
+    :param stereo: Whether to include stereochemistry
+    :return: Mechanism
+    """
+    mech = without_reactions(mech1)
+    mech.species = species.difference(mech1.species, mech2.species, stereo=stereo)
+    return mech
+
+
+def difference(
+    mech1: Mechanism,
+    mech2: Mechanism,
+    reversible: bool = False,
+    stereo: bool = True,
+    drop_species: bool = True,
+) -> Mechanism:
+    """Get mechanism with reactions not included in another mechanism.
+
+    :param mech1: First mechanism
+    :param mech2: Second mechanism
+    :param reversible: Whether to treat reactions as reversible
+    :param stereo: Whether to include stereochemistry
+    :param drop_species: Whether to drop unused species
+    :return: Mechanism
+    """
+    mech = mech1.model_copy()
+    mech.reactions = reaction.difference(
+        mech1.reactions,
+        mech2.reactions,
+        spc_df1=mech1.species,
+        spc_df2=mech2.species,
+        reversible=reversible,
+        stereo=stereo,
+    )
+    if drop_species:
+        mech = without_unused_species(mech)
+    return mech
+
+
 # sequence operations
 def combine_all(mechs: Sequence[Mechanism]) -> Mechanism:
     """Combine mechanisms into one.

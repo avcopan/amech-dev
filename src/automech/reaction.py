@@ -141,7 +141,7 @@ def reagent_strings(
     return [sep.join(r) for r in reagents(rxn_df)]
 
 
-# update
+# binary operations
 def update(
     rxn_df1: polars.DataFrame,
     rxn_df2: polars.DataFrame,
@@ -183,6 +183,37 @@ def left_update(
     :return: Reaction DataFrame
     """
     return update(rxn_df1, rxn_df2, drop_orig=drop_orig, how="left")
+
+
+def difference(
+    rxn_df1: polars.DataFrame,
+    rxn_df2: polars.DataFrame,
+    spc_df1: polars.DataFrame | None = None,
+    spc_df2: polars.DataFrame | None = None,
+    reversible: bool = False,
+    stereo: bool = True,
+) -> polars.DataFrame:
+    """Get reaction data set difference.
+
+    :param rxn_df1: Reaction DataFrame
+    :param rxn_df2: Reaction DataFrame to update from
+    :param spc_df1: Optional species DataFrame for using unique species IDs
+    :param spc_df2: Optional species DataFrame for using unique species IDs
+    :param reversible: Whether to treat reactions as reversible
+    :param stereo: Whether to include stereochemistry
+    :return: Reaction DataFrame
+    """
+    key_col = c_.temp()
+    assert not (spc_df1 is None) ^ (
+        spc_df2 is None
+    ), "Requires species data for each reaction set."
+    rxn_df1 = with_key(
+        rxn_df1, col=key_col, spc_df=spc_df1, reversible=reversible, stereo=stereo
+    )
+    rxn_df2 = with_key(
+        rxn_df2, col=key_col, spc_df=spc_df2, reversible=reversible, stereo=stereo
+    )
+    return rxn_df1.filter(~polars.col(key_col).is_in(rxn_df2[key_col])).drop(key_col)
 
 
 # add/remove rows

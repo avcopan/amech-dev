@@ -97,7 +97,7 @@ def amchis(
     return chis
 
 
-# update
+# binary operations
 def update(
     spc_df1: polars.DataFrame,
     spc_df2: polars.DataFrame,
@@ -132,6 +132,22 @@ def left_update(
     :return: Species DataFrame
     """
     return update(spc_df1, spc_df2, key_col_=key_col_, drop_orig=drop_orig, how="left")
+
+
+def difference(
+    spc_df1: polars.DataFrame, spc_df2: polars.DataFrame, stereo: bool = True
+) -> polars.DataFrame:
+    """Get species data set difference.
+
+    :param spc_df1: Species DataFrame
+    :param spc_df1: Species DataFrame to update from
+    :param stereo: Whether to account for stereo in the comparison
+    :return: Species DataFrame
+    """
+    key_col = c_.temp()
+    spc_df1 = with_key(spc_df1, col=key_col, stereo=stereo)
+    spc_df2 = with_key(spc_df2, col=key_col, stereo=stereo)
+    return spc_df1.filter(~polars.col(key_col).is_in(spc_df2[key_col])).drop(key_col)
 
 
 # add columns
