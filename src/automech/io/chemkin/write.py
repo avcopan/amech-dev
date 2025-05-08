@@ -23,21 +23,28 @@ SUBTANCE = unit_.string(UNITS.substance).upper().replace(" ", "")
 
 
 def mechanism(
-    mech: Mechanism, out: str | Path | None = None, fill_rates: bool = False
+    mech: Mechanism,
+    out: str | Path | None = None,
+    fill_rates: bool = False,
+    elem: bool = True,
+    therm: bool = True,
 ) -> str:
     """Write a mechanism to CHEMKIN format.
 
     :param mech: A mechanism
     :param out: Optionally, write the output to this file path
     :param fill_rates: Whether to fill missing rates with dummy values
+    :param elem: Whether to include elements block
+    :param therm: Whether to include thermo block
     :return: The CHEMKIN mechanism as a string
     """
-    blocks = [
-        elements_block(mech),
-        species_block(mech),
-        thermo_block(mech),
-        reactions_block(mech, fill_rates=fill_rates),
-    ]
+    blocks = [species_block(mech), reactions_block(mech, fill_rates=fill_rates)]
+    if elem:
+        blocks.insert(0, elements_block(mech))
+
+    if therm:
+        blocks.insert(-2, thermo_block(mech))
+
     mech_str = "\n\n\n".join(b for b in blocks if b is not None)
     if out is not None:
         out: Path = Path(out)
@@ -64,6 +71,9 @@ def species_block(mech: Mechanism) -> str:
     :param mech: A mechanism
     :return: The species block string
     """
+    if mech.species.is_empty():
+        return block(KeyWord.SPECIES, [])
+
     name_width = 1 + mech.species[Species.name].str.len_chars().max()
     smi_width = 1 + mech.species[Species.smiles].str.len_chars().max()
     spc_strs = [
@@ -81,7 +91,7 @@ def thermo_block(mech: Mechanism) -> str:
     :param mech: A mechanism
     :return: The thermo block string
     """
-    if SpeciesTherm.therm not in mech.species:
+    if (SpeciesTherm.therm not in mech.species) or mech.species.is_empty():
         return None
 
     spc_df = mech.species
@@ -215,7 +225,12 @@ def block(key, val, header: str | None = None, frame: bool = True) -> str:
     val = val if isinstance(val, str) else "\n".join(val)
     if not frame:
         return val
-    return "\n\n".join([start, val, KeyWord.END])
+
+    if not val:
+        return "\n\n".join([start, KeyWord.END])
+
+    components = [start, val, KeyWord.END] if val else [start, KeyWord.END]
+    return "\n\n".join(components)
 
 
 def text_with_comments(text: str, comments: str, sep: str = "!") -> str:

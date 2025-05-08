@@ -753,7 +753,7 @@ def species_difference(
     return mech
 
 
-def difference(
+def reaction_difference(
     mech1: Mechanism,
     mech2: Mechanism,
     reversible: bool = False,
@@ -780,6 +780,37 @@ def difference(
     )
     if drop_species:
         mech = without_unused_species(mech)
+    return mech
+
+
+def full_difference(
+    mech1: Mechanism,
+    mech2: Mechanism,
+    reversible: bool = False,
+    stereo: bool = True,
+) -> Mechanism:
+    """Get mechanism with species and reactions not included in another mechanism.
+
+    Purely for the convenient counting/statistics, as this generally results in an
+    inconsistent mechanism that is missing some species that are involved in its
+    reactions.
+
+    :param mech1: First mechanism
+    :param mech2: Second mechanism
+    :param reversible: Whether to treat reactions as reversible
+    :param stereo: Whether to include stereochemistry
+    :return: Mechanism
+    """
+    mech = mech1.model_copy()
+    mech.reactions = reaction.difference(
+        mech1.reactions,
+        mech2.reactions,
+        spc_df1=mech1.species,
+        spc_df2=mech2.species,
+        reversible=reversible,
+        stereo=stereo,
+    )
+    mech.species = species.difference(mech1.species, mech2.species, stereo=stereo)
     return mech
 
 
