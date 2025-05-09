@@ -1058,7 +1058,7 @@ def with_sort_data(mech: Mechanism) -> Mechanism:
     return mech
 
 
-def with_fake_sort_data(mech: Mechanism) -> Mechanism:
+def with_fake_sort_data(mech: Mechanism, offset: int = 0) -> Mechanism:
     """Add columns to sort mechanism by species and reactions.
 
     :param mech: Mechanism
@@ -1077,7 +1077,9 @@ def with_fake_sort_data(mech: Mechanism) -> Mechanism:
         df_.list_to_struct_expression(mech.reactions, Reaction.products),
     )
     mech.reactions = species.sort_by_formula(mech.reactions)
-    mech.reactions = df_.with_index(mech.reactions, ReactionSorted.pes, offset=1)
+    mech.reactions = df_.with_index(
+        mech.reactions, ReactionSorted.pes, offset=offset + 1
+    )
     mech.reactions = mech.reactions.with_columns(
         polars.lit(1).alias(ReactionSorted.subpes),
         polars.lit(1).alias(ReactionSorted.channel),
