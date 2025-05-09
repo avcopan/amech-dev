@@ -315,6 +315,10 @@ def expand_stereo(
     :param strained: Include strained stereoisomers?
     :return: Stereoexpanded species table
     """
+    if spc_df.is_empty():
+        ste_df = pandera_.empty([SpeciesStereo])
+        spc_df = spc_df.drop(ste_df.columns, strict=False)
+        return polars.concat([spc_df, ste_df], how="horizontal")
 
     # Do species expansion based on AMChIs
     def _expand_amchi(chi):
