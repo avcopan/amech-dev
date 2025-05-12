@@ -1,5 +1,6 @@
 """Functions acting on species DataFrames."""
 
+import functools
 from collections.abc import Mapping, Sequence
 from typing import Annotated
 
@@ -95,6 +96,21 @@ def amchis(
         chis = [v[0] for v in vals_lst]
 
     return chis
+
+
+def names(
+    spc_df: polars.DataFrame, fml: str | dict[str, int] | None = None
+) -> polars.DataFrame:
+    """Get species names.
+
+    :param spc_df: Species DataFrame
+    :param fml: Optionally, lookup names for species matching this formula
+    :return: Species DataFrame
+    """
+    if fml is not None:
+        spc_df = by_formula(spc_df, fml=fml)
+
+    return spc_df.get_column(Species.name).to_list()
 
 
 # binary operations
@@ -241,6 +257,29 @@ def sort_by_formula(spc_df: polars.DataFrame) -> polars.DataFrame:
 
 
 # select
+def by_formula(spc_df: polars.DataFrame, fml: str | dict[str, int]) -> polars.DataFrame:
+    """Select species by formula.
+
+    :param spc_df: Species DataFrame
+    :param fml: Formula
+    :return: Species DataFrame
+    """
+    # Build formula matcher
+    fml = automol.form.from_string(fml) if isinstance(fml, str) else fml
+    match_ = functools.partial(automol.form.match, fml)
+
+    # Add formula match column
+    tmp_col = c_.temp()
+    spc_df = spc_df.with_columns(
+        polars.col(Species.formula)
+        .map_elements(match_, return_dtype=bool)
+        .alias(tmp_col)
+    )
+
+    # Filter by formula
+    return spc_df.filter(tmp_col).drop(tmp_col)
+
+
 def filter(  # noqa: A001
     spc_df: polars.DataFrame,
     vals_: Sequence[object | Sequence[object]] | None = None,
