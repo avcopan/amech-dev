@@ -947,7 +947,7 @@ def enumerate_reactions(
     return mech
 
 
-def _enumerate_reactions(
+def enumerate_products(
     mech: Mechanism,
     smarts: str,
     rcts_: Sequence[ReagentValue_] | None = None,
@@ -967,6 +967,43 @@ def _enumerate_reactions(
     :param rcts_: Reactants to be used in enumeration (see above)
     :param spc_col_: Species column(s) for identifying reactants and products
     :param src_mech: Optional source mechanism for species names and data
+    :param repeat: Number of times to repeat the enumeration
+    :param drop_self_rxns: Whether to drop self-reactions
+    :return: Mechanism with enumerated reactions
+    """
+    return _enumerate_reactions(
+        mech,
+        smarts,
+        rcts_=rcts_,
+        spc_col_=spc_col_,
+        src_mech=src_mech,
+        skip_rxn_update=True,
+    )
+
+
+def _enumerate_reactions(
+    mech: Mechanism,
+    smarts: str,
+    rcts_: Sequence[ReagentValue_] | None = None,
+    spc_col_: str | Sequence[str] = Species.name,
+    src_mech: Mechanism | None = None,
+    skip_rxn_update: bool = False,
+) -> Mechanism:
+    """Enumerate reactions for mechanism based on SMARTS reaction template.
+
+    Does not include stereochemistry! (Run before stereoexpansion.)
+
+    Reactants are listed by position in the SMARTS template. If a sequence of reactants
+    is provided, reactions will be enumerated for each of them. If `None` is provided,
+    reactions will be enumerated for all species currently in the mechanism.
+
+    :param mech: Mechanism
+    :param smarts: SMARTS reaction template
+    :param rcts_: Reactants to be used in enumeration (see above)
+    :param spc_col_: Species column(s) for identifying reactants and products
+    :param src_mech: Optional source mechanism for species names and data
+    :param skip_rxn_update: Whether to skip the reaction update, only adding products of
+        reactions as species
     :return: Mechanism with enumerated reactions
     """
     # Check reactants argument
@@ -998,6 +1035,9 @@ def _enumerate_reactions(
     mech.species = species.update(spc_df, mech.species)
     if src_mech is not None:
         mech.species = species.left_update(mech.species, src_mech.species)
+
+    if skip_rxn_update:
+        return mech
 
     # Form the updated reactions DataFrame
     rct_chis, prd_chis = zip(*rxn_chis, strict=True)

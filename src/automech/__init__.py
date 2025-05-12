@@ -11,6 +11,7 @@ from ._mech import (
     drop_duplicate_reactions,
     drop_reactions_by_smiles,
     drop_self_reactions,
+    enumerate_products,
     enumerate_reactions,
     expand_parent_stereo,
     expand_stereo,
@@ -80,6 +81,7 @@ __all__ = [
     "expand_parent_stereo",
     # building
     "enumerate_reactions",
+    "enumerate_products",
     # sorting
     "with_sort_data",
     "with_fake_sort_data",
