@@ -1176,7 +1176,7 @@ def display(
     color_subpes: bool = True,
     species_centered: bool = False,
     exclude_formulas: Sequence[str] = net_.DEFAULT_EXCLUDE_FORMULAS,
-    height: str = "750px",
+    height: str = "1000px",
     out_name: str = "net.html",
     out_dir: str = ".automech",
     open_browser: bool = True,
