@@ -357,6 +357,22 @@ def with_rate_objects(
     )
 
 
+def with_dummy_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
+    """Add placeholder rates to this DataFrame, if missing.
+
+    This is mainly needed for ChemKin mechanism writing.
+
+    :param rxn_df: Reaction DataFrame
+    :return: Reaction DataFrame
+    """
+    rev0 = True
+    rate0 = ac.rate.ArrheniusRateFit().model_dump()
+    rxn_df = rxn_df.drop(ReactionRate.rate, ReactionRate.reversible, strict=False)
+    rxn_df = rxn_df.with_columns(polars.lit(rev0).alias(ReactionRate.reversible))
+    rxn_df = rxn_df.with_columns(polars.lit(rate0).alias(ReactionRate.rate))
+    return rxn_df
+
+
 def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     """Add placeholder rates to this DataFrame, if missing.
 
