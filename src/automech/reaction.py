@@ -233,6 +233,15 @@ def drop_self_reactions(rxn_df: polars.DataFrame) -> polars.DataFrame:
     return rxn_df.drop(rcol, pcol)
 
 
+def drop_noncanonical_enantiomers(rxn_df: polars.DataFrame) -> polars.DataFrame:
+    """Drop non-canonical enantiomer reactions.
+
+    :param rxn_df: Reactions DataFrame
+    :return: Reactions DataFrame
+    """
+    return rxn_df.filter(polars.col(ReactionStereo.canon))
+
+
 # add/remove columns
 def with_key(
     rxn_df: polars.DataFrame,

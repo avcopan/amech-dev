@@ -210,6 +210,16 @@ def with_therm_objects(spc_df: polars.DataFrame, col: str) -> polars.DataFrame:
     )
 
 
+# add/remove rows
+def drop_noncanonical_enantiomers(spc_df: polars.DataFrame) -> polars.DataFrame:
+    """Drop non-canonical enantiomer species.
+
+    :param spc_df: Species DataFrame
+    :return: Species DataFrame
+    """
+    return spc_df.filter(polars.col(SpeciesStereo.canon))
+
+
 # tranform
 def rename(
     spc_df: polars.DataFrame,

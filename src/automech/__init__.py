@@ -9,6 +9,7 @@ from ._mech import (
     display_reactions,
     display_species,
     drop_duplicate_reactions,
+    drop_noncanonical_enantiomers,
     drop_reactions_by_smiles,
     drop_self_reactions,
     enumerate_products,
@@ -59,6 +60,7 @@ __all__ = [
     "drop_duplicate_reactions",
     "drop_self_reactions",
     "drop_reactions_by_smiles",
+    "drop_noncanonical_enantiomers",
     # transformations
     "rename",
     "neighborhood",

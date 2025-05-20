@@ -394,6 +394,23 @@ def drop_reactions_by_smiles(
     return mech
 
 
+def drop_noncanonical_enantiomers(mech: Mechanism) -> Mechanism:
+    """Drop non-canonical enantiomer reactions from a mechanism.
+
+    :param mech: Mechanism
+    :return: Mechanism
+    """
+    mech = mech.model_copy()
+
+    if mech.reactions.is_empty():
+        mech.species = species.drop_noncanonical_enantiomers(mech.species)
+        return mech
+
+    mech.reactions = reaction.drop_noncanonical_enantiomers(mech.reactions)
+    mech = without_unused_species(mech)
+    return mech
+
+
 def with_species(
     mech: Mechanism, spc_names: Sequence[str] = (), strict: bool = False
 ) -> Mechanism:
