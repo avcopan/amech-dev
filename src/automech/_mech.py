@@ -1061,6 +1061,7 @@ def with_sort_data(mech: Mechanism) -> Mechanism:
     :return: Mechanism with sort columns
     """
     mech = mech.model_copy()
+    mech = without_sort_data(mech)
 
     # Sort species by formula
     mech.species = species.sort_by_formula(mech.species)
@@ -1105,6 +1106,7 @@ def with_fake_sort_data(mech: Mechanism, offset: int = 0) -> Mechanism:
     :return: Mechanism with sort columns
     """
     mech = mech.model_copy()
+    mech = without_sort_data(mech)
 
     # Sort species by formula
     mech.species = species.sort_by_formula(mech.species)
@@ -1126,6 +1128,19 @@ def with_fake_sort_data(mech: Mechanism, offset: int = 0) -> Mechanism:
     )
     mech.reactions = pandera_.impose_schema(ReactionSorted, mech.reactions)
     mech.reactions = reaction.validate(mech.reactions, [Reaction, ReactionSorted])
+    return mech
+
+
+def without_sort_data(mech: Mechanism) -> Mechanism:
+    """Add columns to sort mechanism by species and reactions.
+
+    :param mech: Mechanism
+    :return: Mechanism with sort columns
+    """
+    mech = mech.model_copy()
+    mech.reactions = mech.reactions.drop(
+        ReactionSorted.pes, ReactionSorted.subpes, ReactionSorted.channel, strict=False
+    )
     return mech
 
 

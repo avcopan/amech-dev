@@ -38,6 +38,7 @@ from ._mech import (
     with_sort_data,
     with_species,
     without_reactions,
+    without_sort_data,
     without_species,
     without_unused_species,
 )
@@ -84,6 +85,7 @@ __all__ = [
     "enumerate_products",
     # sorting
     "with_sort_data",
+    "without_sort_data",
     "with_fake_sort_data",
     # comparisons
     "are_equivalent",
