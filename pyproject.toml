@@ -78,7 +78,7 @@ libstdcxx-ng = ">=14.1.0,<14.2"
 [tool.pixi.feature.proto.dependencies]
 tqdm = "*"
 pandera = "*"
-polars = "*"
+polars = "<1.29"
 cantera = "*"
 pyarrow = "*"
 altair-all = ">=5.5.0,<6"
