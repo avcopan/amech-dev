@@ -139,7 +139,7 @@ def update(
 
     # Join, adding suffix to identify overlapping columns
     suff = f"_{c_.temp()}"
-    df1 = df1.join(df2, on=join_col, how=how, suffix=suff)
+    df1 = df1.join(df2, on=join_col, how=how, suffix=suff, maintain_order="left_right")
     df1 = df1.drop(join_col, f"{join_col}{suff}", strict=False)
 
     # Handle overlapping column values
