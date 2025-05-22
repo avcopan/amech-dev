@@ -90,6 +90,9 @@ def amchis(
     :param try_fill: Whether to attempt to fill missing values
     :return: Species IDs
     """
+    if not vals_:
+        return []
+
     vals_lst, cols = normalize_values_arguments(vals_, col_)
     chis = df_.values(spc_df, Species.amchi, vals_in_=vals_lst, col_in_=cols)
     if fill and cols[0] == Species.amchi:

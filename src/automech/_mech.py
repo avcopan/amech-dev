@@ -946,6 +946,7 @@ def enumerate_reactions(
     smarts: str,
     rcts_: Sequence[ReagentValue_] | None = None,
     spc_col_: str | Sequence[str] = Species.name,
+    excl_rcts: Sequence[str] = (),
     src_mech: Mechanism | None = None,
     repeat: int = 1,
     drop_self_rxns: bool = True,
@@ -969,7 +970,12 @@ def enumerate_reactions(
     """
     for _ in range(repeat):
         mech = _enumerate_reactions(
-            mech, smarts, rcts_=rcts_, spc_col_=spc_col_, src_mech=src_mech
+            mech,
+            smarts,
+            rcts_=rcts_,
+            spc_col_=spc_col_,
+            src_mech=src_mech,
+            excl_rcts=excl_rcts,
         )
 
     if drop_self_rxns:
@@ -1016,6 +1022,7 @@ def _enumerate_reactions(
     mech: Mechanism,
     smarts: str,
     rcts_: Sequence[ReagentValue_] | None = None,
+    excl_rcts: Sequence[ReagentValue_] = (),
     spc_col_: str | Sequence[str] = Species.name,
     src_mech: Mechanism | None = None,
     skip_rxn_update: bool = False,
@@ -1031,6 +1038,7 @@ def _enumerate_reactions(
     :param mech: Mechanism
     :param smarts: SMARTS reaction template
     :param rcts_: Reactants to be used in enumeration (see above)
+    :param excl_rcts: Reactants to be excluded from enumeration (see above)
     :param spc_col_: Species column(s) for identifying reactants and products
     :param src_mech: Optional source mechanism for species names and data
     :param skip_rxn_update: Whether to skip the reaction update, only adding products of
@@ -1049,12 +1057,20 @@ def _enumerate_reactions(
         pool if r is None else [r] if isinstance(r, str) else r for r in rcts_
     ]
 
+    excl_rcts = [[r] if isinstance(r, str) else r for r in excl_rcts]
+    excl_chis = species.amchis(mech.species, vals_=excl_rcts, col_=spc_col_, fill=True)
+
     # Enumerate reactions
     rxn_chis = []
     for rct_vals_ in itertools.product(*rcts_vals_):
         rct_chis = species.amchis(
             mech.species, vals_=rct_vals_, col_=spc_col_, fill=True
         )
+
+        # Skip if excluded reactants are present
+        if any(c in excl_chis for c in rct_chis):
+            continue
+
         for rxn in automol.reac.enum.from_amchis(smarts, rct_chis):
             _, prd_chis = automol.reac.amchis(rxn, stereo=False)
             rxn_chis.append((rct_chis, prd_chis))
