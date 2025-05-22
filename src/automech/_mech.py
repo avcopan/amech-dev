@@ -10,6 +10,7 @@ import automol
 import more_itertools as mit
 import polars
 import pydantic
+from automol.graph import enum
 from IPython.display import display as ipy_display
 
 import autochem as ac
@@ -356,6 +357,19 @@ def drop_duplicate_reactions(mech: Mechanism) -> Mechanism:
     mech.reactions = mech.reactions.unique(col_tmp, maintain_order=True)
     mech.reactions = mech.reactions.drop(col_tmp)
     return mech
+
+
+def drop_instability_reactions(mech: Mechanism) -> Mechanism:
+    """Drop instability from mechanism.
+
+    :param mech: Mechanism
+    :return: Mechanism
+    """
+    instab_mech = without_reactions(mech)
+    instab_mech = enumerate_reactions(instab_mech, enum.ReactionSmarts.qooh_instability)
+    return reaction_difference(
+        mech, instab_mech, reversible=True, stereo=False, drop_species=False
+    )
 
 
 def drop_self_reactions(mech: Mechanism) -> Mechanism:
