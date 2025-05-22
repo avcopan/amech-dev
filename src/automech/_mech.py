@@ -184,6 +184,17 @@ def species_names(
     return spc_names
 
 
+def unstable_species_names(mech: Mechanism) -> list[str]:
+    """Get names of unstable species in mechanism.
+
+    :param mech: Mechanism
+    :return: Species names
+    """
+    instab_mech = without_reactions(mech)
+    instab_mech = enumerate_reactions(instab_mech, enum.ReactionSmarts.qooh_instability)
+    return reaction.reactant_names(instab_mech.reactions)
+
+
 def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], list[str]]:
     """Generate dictionary for renaming species names from one mechanism to another.
 
@@ -1087,6 +1098,9 @@ def _enumerate_reactions(
         return mech
 
     # Form the updated reactions DataFrame
+    if not rxn_chis:
+        return mech
+
     rct_chis, prd_chis = zip(*rxn_chis, strict=True)
     name_dct = df_.lookup_dict(mech.species, Species.amchi, Species.name)
     rxn_df = reaction.bootstrap(

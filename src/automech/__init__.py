@@ -32,6 +32,7 @@ from ._mech import (
     species_difference,
     species_names,
     string,
+    unstable_species_names,
     update,
     with_comparison_rate_objects,
     with_fake_sort_data,
@@ -55,6 +56,7 @@ __all__ = [
     "species_count",
     "reaction_count",
     "species_names",
+    "unstable_species_names",
     "rename_dict",
     "network",
     # add/remove reactions

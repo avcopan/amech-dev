@@ -129,6 +129,26 @@ def species_names(rxn_df: polars.DataFrame) -> list[str]:
     return sorted(mit.unique_everseen(itertools.chain.from_iterable(rcts + prds)))
 
 
+def reactant_names(rxn_df: polars.DataFrame) -> list[str]:
+    """Get reatants in reactions DataFrame.
+
+    :param rxn_df: Reactions DataFrame
+    :return: Species names
+    """
+    rcts = rxn_df.get_column(Reaction.reactants).to_list()
+    return sorted(mit.unique_everseen(itertools.chain.from_iterable(rcts)))
+
+
+def product_names(rxn_df: polars.DataFrame) -> list[str]:
+    """Get reatants in reactions DataFrame.
+
+    :param rxn_df: Reactions DataFrame
+    :return: Species names
+    """
+    prds = rxn_df.get_column(Reaction.products).to_list()
+    return sorted(mit.unique_everseen(itertools.chain.from_iterable(prds)))
+
+
 def reagent_strings(
     rxn_df: polars.DataFrame, sep: str = DEFAULT_REAGENT_SEPARATOR
 ) -> list[str]:
