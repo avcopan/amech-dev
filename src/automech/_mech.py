@@ -23,6 +23,7 @@ from .reaction import (
     ReactionRate,
     ReactionSorted,
     ReactionStereo,
+    ReactionUnstable,
 )
 from .species import Species, SpeciesDataFrame_, SpeciesStereo
 from .util import c_, df_, pandera_
@@ -370,7 +371,7 @@ def drop_duplicate_reactions(mech: Mechanism) -> Mechanism:
     return mech
 
 
-def drop_instability_reactions(mech: Mechanism) -> Mechanism:
+def drop_unstable_product_reactions(mech: Mechanism) -> Mechanism:
     """Drop instability from mechanism.
 
     :param mech: Mechanism
@@ -1037,6 +1038,7 @@ def _enumerate_reactions(
     spc_col_: str | Sequence[str] = Species.name,
     src_mech: Mechanism | None = None,
     skip_rxn_update: bool = False,
+    skip_rxn_left_update: bool = False,
 ) -> Mechanism:
     """Enumerate reactions for mechanism based on SMARTS reaction template.
 
@@ -1054,6 +1056,8 @@ def _enumerate_reactions(
     :param src_mech: Optional source mechanism for species names and data
     :param skip_rxn_update: Whether to skip the reaction update, only adding products of
         reactions as species
+    :param skip_rxn_left_update: Whether to skip the left update of reactions, which
+        will align their direction to and add data from `src_mech`
     :return: Mechanism with enumerated reactions
     """
     # Check reactants argument
@@ -1109,9 +1113,75 @@ def _enumerate_reactions(
         spc_df=mech.species,
     )
     mech.reactions = reaction.update(rxn_df, mech.reactions)
-    if src_mech is not None:
+    if not skip_rxn_left_update and src_mech is not None:
         mech.reactions = reaction.left_update(mech.reactions, src_mech.reactions)
     return drop_duplicate_reactions(mech)
+
+
+def replace_unstable_products(
+    mech: Mechanism, src_mech: Mechanism | None = None
+) -> tuple[Mechanism, Mechanism]:
+    """Replace unstable products with their stable counterparts.
+
+    :param mech: Mechanism
+    :return: Mechanism without unstable species; mechanism of unstable species
+    """
+    mech = mech.model_copy()
+
+    # Enumerate instability reactions
+    uns_mech = without_reactions(mech)
+    uns_mech = _enumerate_reactions(
+        uns_mech,
+        enum.ReactionSmarts.qooh_instability,
+        src_mech=src_mech,
+        skip_rxn_left_update=True,  # Do not align direction to source mechanism
+    )
+
+    # Form dictionary mapping unstable products to stable ones
+    name_col = c_.temp()
+    uns_rxn_df = uns_mech.reactions
+    uns_rxn_df = uns_rxn_df.with_columns(
+        polars.col(Reaction.reactants).list.first().alias(name_col)
+    )
+    uns_dct = dict(uns_rxn_df.select(name_col, Reaction.products).iter_rows())
+
+    # Replace unstable reaction products with stable ones
+    #   1. Create columns of stable products for each unstable product
+    mech.reactions = mech.reactions.with_columns(
+        polars.when(polars.col(Reaction.products).list.contains(name))
+        .then(ins)
+        .otherwise([])
+        .alias(name)
+        for name, ins in uns_dct.items()
+    )
+    #   2. Remove unstable species from product list and concat with stable products
+    mech.reactions = mech.reactions.with_columns(
+        polars.concat_list(
+            polars.col(Reaction.products).list.set_difference(uns_dct.keys()),
+            *(polars.col(name) for name in uns_dct.keys()),
+        )
+    )
+    #   3. Combine the replacement columns into a single struct column
+    mech.reactions = mech.reactions.with_columns(
+        polars.struct(polars.col(name) for name in uns_dct.keys()).alias(
+            ReactionUnstable.replaced_unstable
+        )
+    ).drop(uns_dct.keys())
+    assert not set(species_names(mech, rxn_only=True)) & set(uns_dct), mech
+
+    # Remove unstable species and add stable ones
+    stable_spc_df = uns_mech.species.filter(
+        ~polars.col(Species.name).is_in(uns_dct.keys())
+    )
+    mech.species = mech.species.filter(~polars.col(Species.name).is_in(uns_dct.keys()))
+    mech.species = species.update(mech.species, stable_spc_df)
+
+    # Save mechanism containing only the unstable species
+    uns_spc_mech = without_reactions(uns_mech)
+    uns_spc_mech.species = uns_mech.species.filter(
+        polars.col(Species.name).is_in(uns_dct.keys())
+    )
+    return mech, uns_spc_mech
 
 
 # sorting

@@ -9,10 +9,10 @@ from ._mech import (
     display_reactions,
     display_species,
     drop_duplicate_reactions,
-    drop_instability_reactions,
     drop_noncanonical_enantiomers,
     drop_reactions_by_smiles,
     drop_self_reactions,
+    drop_unstable_product_reactions,
     enumerate_products,
     enumerate_reactions,
     expand_parent_stereo,
@@ -28,6 +28,7 @@ from ._mech import (
     reaction_difference,
     rename,
     rename_dict,
+    replace_unstable_products,
     species_count,
     species_difference,
     species_names,
@@ -61,7 +62,7 @@ __all__ = [
     "network",
     # add/remove reactions
     "drop_duplicate_reactions",
-    "drop_instability_reactions",
+    "drop_unstable_product_reactions",
     "drop_self_reactions",
     "drop_reactions_by_smiles",
     "drop_noncanonical_enantiomers",
@@ -89,6 +90,7 @@ __all__ = [
     # building
     "enumerate_reactions",
     "enumerate_products",
+    "replace_unstable_products",
     # sorting
     "with_sort_data",
     "without_sort_data",

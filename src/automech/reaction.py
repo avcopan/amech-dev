@@ -67,6 +67,12 @@ class ReactionError(Model):
     has_unbalanced_formula: bool
 
 
+class ReactionUnstable(Model):
+    """Reaction table with unstable species."""
+
+    replaced_unstable: polars.Struct
+
+
 # validation
 def validate(
     df: polars.DataFrame, model_: Model | Sequence[Model] = (), sort: bool = True
