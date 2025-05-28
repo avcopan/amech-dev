@@ -228,7 +228,7 @@ def rename(
     spc_df: polars.DataFrame,
     names: Sequence[str] | Mapping[str, str],
     new_names: Sequence[str] | None = None,
-    drop_orig: bool = True,
+    orig_prefix: str | None = None,
 ) -> polars.DataFrame:
     """Rename species in a species DataFrame.
 
@@ -238,12 +238,12 @@ def rename(
     :param drop_orig: Whether to drop the original names, or include them as `orig`
     :return: Species DataFrame
     """
-    col_dct = c_.to_orig(Species.name)
+    col_dct = c_.to_(Species.name, orig_prefix or c_.temp())
     spc_df = spc_df.with_columns(polars.col(c0).alias(c) for c0, c in col_dct.items())
     expr = polars.col(Species.name)
     expr = expr.replace(names) if new_names is None else expr.replace(names, new_names)
     spc_df = spc_df.with_columns(expr)
-    if drop_orig:
+    if not orig_prefix:
         spc_df = spc_df.drop(col_dct.values())
     return spc_df
 

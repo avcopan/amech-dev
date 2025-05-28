@@ -314,7 +314,7 @@ def rename(
     mech: Mechanism,
     names: Sequence[str] | Mapping[str, str],
     new_names: Sequence[str] | None = None,
-    drop_orig: bool = True,
+    orig_prefix: str | None = None,
     drop_missing: bool = False,
 ) -> Mechanism:
     """Rename species in mechanism.
@@ -332,10 +332,10 @@ def rename(
         mech = with_species(mech, list(names), strict=drop_missing)
 
     mech.species = species.rename(
-        mech.species, names=names, new_names=new_names, drop_orig=drop_orig
+        mech.species, names=names, new_names=new_names, orig_prefix=orig_prefix
     )
     mech.reactions = reaction.rename(
-        mech.reactions, names=names, new_names=new_names, drop_orig=drop_orig
+        mech.reactions, names=names, new_names=new_names, orig_prefix=orig_prefix
     )
     return mech
 

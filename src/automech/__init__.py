@@ -96,7 +96,7 @@ __all__ = [
     "with_sort_data",
     "without_sort_data",
     "with_fake_sort_data",
-    "with_sorted_reagents"
+    "with_sorted_reagents",
     # comparisons
     "are_equivalent",
     # read/write,

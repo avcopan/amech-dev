@@ -502,7 +502,7 @@ def rename(
     rxn_df: polars.DataFrame,
     names: Sequence[str] | Mapping[str, str],
     new_names: Sequence[str] | None = None,
-    drop_orig: bool = True,
+    orig_prefix: str | None = None,
 ) -> polars.DataFrame:
     """Rename species in a reactions DataFrame.
 
@@ -512,10 +512,10 @@ def rename(
     :param drop_orig: Whether to drop the original names, or include them as `orig`
     :return: Reactions DataFrame
     """
-    col_dct = c_.to_orig([Reaction.reactants, Reaction.products])
+    col_dct = c_.to_([Reaction.reactants, Reaction.products], orig_prefix or c_.temp())
     rxn_df = rxn_df.with_columns(polars.col(c0).alias(c) for c0, c in col_dct.items())
     rxn_df = translate_reagents(rxn_df=rxn_df, trans=names, trans_into=new_names)
-    if drop_orig:
+    if not orig_prefix:
         rxn_df = rxn_df.drop(col_dct.values())
     return rxn_df
 
