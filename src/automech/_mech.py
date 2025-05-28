@@ -1263,6 +1263,17 @@ def without_sort_data(mech: Mechanism) -> Mechanism:
     return mech
 
 
+def with_sorted_reagents(mech: Mechanism) -> Mechanism:
+    """Sort reagents in the mechanism alphabetically.
+
+    :param mech: Mechanism
+    :return: Mechanism
+    """
+    mech = mech.model_copy()
+    mech.reactions = reaction.with_sorted_reagents(mech.reactions, reversible=False)
+    return mech
+
+
 # comparison
 def are_equivalent(mech1: Mechanism, mech2: Mechanism) -> bool:
     """Determine whether two mechanisms are equivalent.
