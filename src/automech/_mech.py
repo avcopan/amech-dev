@@ -134,6 +134,16 @@ def reagents(mech: Mechanism) -> list[list[str]]:
     return reaction.reagents(mech.reactions)
 
 
+def reaction_rate_objects(mech: Mechanism, eq: str) -> list[ac.rate.Reaction]:
+    """Get rate objects associated with one reaction.
+
+    :param mech: Mechanism
+    :param eq: Equation
+    :return: Rate objects
+    """
+    return reaction.reaction_rate_objects(mech.reactions, eq=eq)
+
+
 def species_names(
     mech: Mechanism,
     rxn_only: bool = False,

@@ -26,6 +26,7 @@ from ._mech import (
     network,
     reaction_count,
     reaction_difference,
+    reaction_rate_objects,
     rename,
     rename_dict,
     replace_unstable_products,
@@ -57,6 +58,7 @@ __all__ = [
     # properties
     "species_count",
     "reaction_count",
+    "reaction_rate_objects",
     "species_names",
     "unstable_species_names",
     "rename_dict",

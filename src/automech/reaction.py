@@ -167,6 +167,20 @@ def reagent_strings(
     return [sep.join(r) for r in reagents(rxn_df)]
 
 
+def reaction_rate_objects(rxn_df: polars.DataFrame, eq: str) -> list[ac.rate.Reaction]:
+    """Get rate objects associated with one reaction.
+
+    :param rxn_df: Reaction DataFrame
+    :param eq: Equation
+    :return: Rate objects
+    """
+    tmp_col = c_.temp()
+    rxn_df = with_equation_match_column(rxn_df, col=tmp_col, eqs=[eq])
+    rxn_df = rxn_df.filter(polars.col(tmp_col)).drop(tmp_col)
+    rxn_df = with_rate_objects(rxn_df, col=tmp_col)
+    return rxn_df.get_column(tmp_col).to_list()
+
+
 # binary operations
 def update(
     rxn_df1: polars.DataFrame,
@@ -369,12 +383,12 @@ def with_rate_objects(
     col: str,
     fill: bool = False,
 ) -> polars.DataFrame:
-    """Get reaction rate objects as a list.
+    """Add a column of reaction rate objects.
 
     :param rxn_df: Reaction DataFrame
     :param col: Column
     :param fill: Whether to fill missing rates with dummy values
-    :return: Rate objects
+    :return: Reaction DataFrame
     """
     if fill:
         rxn_df = with_rates(rxn_df)
