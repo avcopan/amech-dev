@@ -1,6 +1,6 @@
-project(PAC99
+cmake_minimum_required(VERSION 3.5)
+project(automech-toolbox
 	LANGUAGES Fortran C)
-cmake_minimum_required(VERSION 2.8)
 
 add_subdirectory(MESS)
 add_subdirectory(PAC99)
