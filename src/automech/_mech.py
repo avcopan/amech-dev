@@ -1517,9 +1517,8 @@ def display_reactions(
         # Display the Arrhenius plot
         ipy_display(
             ac.rate.display(
-                rate,
-                others=comp_rates_,
-                others_labels=comp_labels_,
+                [rate, *comp_rates_],
+                label=["This work", *comp_labels_],
                 T_range=t_range,
                 P=p,
             )
