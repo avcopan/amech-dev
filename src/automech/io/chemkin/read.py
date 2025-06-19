@@ -216,6 +216,7 @@ def thermo(
         SpeciesTherm.therm: [s.therm.model_dump() for s in spcs],
     }
     therm_df = polars.DataFrame(data, strict=False)
+    therm_df = therm_df.unique(subset=Species.name)
     if spc_df is not None:
         therm_df = m_species.left_update(spc_df, therm_df, key_col_=Species.name)
 
